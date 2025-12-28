@@ -37,12 +37,27 @@ During the boot sequence, the CPU operates in a special "Boot Mode" for interrup
 
 The code on the Boot ROM executes the following steps in order:
 
-1. **Hardware Initialization**: From power-on, the Boot ROM has full access to WRAM, VRAM, CRAM, OAM, and all I/O registers. It performs basic hardware setup, which includes clearing WRAM and initializing the Stack Pointer (SP) to `0xD000` (one past the end of WRAM0, since `PUSH` pre-decrements SP before writing).
+1. **Hardware Initialization**: From power-on, the Boot ROM performs the following setup sequence:
+   - **Disable interrupts** using the `DI` instruction.
+   - **Disable the PPU** by clearing the `LCDC` register, blanking the screen.
+   - **Mute the APU** by disabling all sound channels.
+   - **Stop both timers** by clearing the enable bits in `TAC0` and `TAC1`.
+   - **Disable the serial port** by clearing `SC.ENABLE`.
+   - **Clear interrupt registers** (`IE` and `IF` set to `0x00`).
+   - **Initialize CPU registers** `R0`-`R6` and `F` to `0x0000`.
+   - **Initialize the Stack Pointer (SP)** to `0xD000` (one past the end of WRAM0, since `PUSH` pre-decrements).
+   - **Set bank registers to 0** (`MPR_BANK`, `RAM_BANK`, `WRAM_BANK`). Note: `VRAM_BANK` is hardware-locked to 0 during boot.
+   - **Clear WRAM** (`B000-CFFF`).
+   - **Clear HRAM** (`FE00-FFFF`).
+   - **Clear OAM** (`F400-F5FF`) to hide all sprites.
+   - **Initialize CRAM** (`F200-F3FF`) to black (`0x0000` for all entries).
+   - **Initialize PPU registers** (`F040-F07F`) to their default values.
+   - **Initialize APU registers** (`F080-F0BF`) to their default (muted) values.
+   - The RTC is left untouched to preserve persistent timekeeping.
 2. **System Library Copy**: The Boot ROM initiates a DMA transfer to copy the 4 KiB System Library from its internal ROM to the dedicated System Library RAM at `E000-EFFF`. It does this by:
    - Writing the source address in the Boot ROM to the `DMA_SRC` register.
    - Setting the DMA mode to `1` (System Library DMA) in the `DMA_CTL` register (bits 5-3).
    - Setting the `START` bit in `DMA_CTL`.
-     After the DMA transfer is complete, it sets the PPU and APU registers to a known-default, disabled state.
 3. **Display Boot Animation**: The Boot ROM displays the console logo, enables interrupts (EI), and uses its internal V-Blank ISR to perform a brief startup animation. It may read the **Boot Animation ID** from the cartridge header to select a specific visual effect.
 4. **Cartridge Detection & Verification**: While the animation is playing, the Boot ROM checks for a cartridge and verifies its header.
 5. **Configure Game Interrupt Mode**: It reads the "Interrupt Mode" flag from the cartridge header and sets an internal hardware latch that determines where the CPU will look for interrupt vectors once the game starts (either the cartridge ROM or WRAM).
