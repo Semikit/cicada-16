@@ -37,7 +37,7 @@ During the boot sequence, the CPU operates in a special "Boot Mode" for interrup
 
 The code on the Boot ROM executes the following steps in order:
 
-1. **Hardware Initialization**: From power-on, the Boot ROM has full access to WRAM, VRAM, CRAM, OAM, and all I/O registers. It performs basic hardware setup, which includes clearing WRAM and initializing the Stack Pointer (SP) to the top of WRAM0 (e.g., `0xCFFF`).
+1. **Hardware Initialization**: From power-on, the Boot ROM has full access to WRAM, VRAM, CRAM, OAM, and all I/O registers. It performs basic hardware setup, which includes clearing WRAM and initializing the Stack Pointer (SP) to `0xD000` (one past the end of WRAM0, since `PUSH` pre-decrements SP before writing).
 2. **System Library Copy**: The Boot ROM initiates a DMA transfer to copy the 4 KiB System Library from its internal ROM to the dedicated System Library RAM at `E000-EFFF`. It does this by:
    - Writing the source address in the Boot ROM to the `DMA_SRC` register.
    - Setting the DMA mode to `1` (System Library DMA) in the `DMA_CTL` register (bits 5-3).
