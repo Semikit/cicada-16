@@ -38,14 +38,13 @@ During the boot sequence, the CPU operates in a special "Boot Mode" for interrup
 The code on the Boot ROM executes the following steps in order:
 
 1. **Hardware Initialization**: From power-on, the Boot ROM performs the following setup sequence:
+   - **Initialize CPU registers** `R0`-`R7` and `0x0000`.
    - **Disable interrupts** using the `DI` instruction.
    - **Disable the PPU** by clearing the `LCDC` register, blanking the screen.
    - **Mute the APU** by disabling all sound channels.
    - **Stop both timers** by clearing the enable bits in `TAC0` and `TAC1`.
    - **Disable the serial port** by clearing `SC.ENABLE`.
    - **Clear interrupt registers** (`IE` and `IF` set to `0x00`).
-   - **Initialize CPU registers** `R0`-`R6` and `F` to `0x0000`.
-   - **Initialize the Stack Pointer (SP)** to `0xD000` (one past the end of WRAM0, since `PUSH` pre-decrements).
    - **Set bank registers to 0** (`MPR_BANK`, `RAM_BANK`, `WRAM_BANK`). Note: `VRAM_BANK` is hardware-locked to 0 during boot.
    - **Clear WRAM** (`B000-CFFF`).
    - **Clear HRAM** (`FE00-FFFF`).
