@@ -44,7 +44,6 @@ The code on the Boot ROM executes the following steps in order:
    - **Mute the APU** by disabling all sound channels.
    - **Stop both timers** by clearing the enable bits in `TAC0` and `TAC1`.
    - **Disable the serial port** by clearing `SC.ENABLE`.
-   - **Clear interrupt registers** (`IE` and `IF` set to `0x00`).
    - **Set bank registers to 0** (`MPR_BANK`, `RAM_BANK`, `WRAM_BANK`). Note: `VRAM_BANK` is hardware-locked to 0 during boot.
    - **Clear WRAM** (`B000-CFFF`).
    - **Clear HRAM** (`FE00-FFFF`).
