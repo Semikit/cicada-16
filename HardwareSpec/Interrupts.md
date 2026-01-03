@@ -101,14 +101,24 @@ The Interrupt Vector Table is a 26-byte block of memory containing the 16-bit ad
 
 ## **6. Vector Table Location Modes**
 
-The Cicada-16 supports two modes for the location of the interrupt vector table, determined by a flag in the cartridge header. This provides a choice between simplicity and advanced functionality.
+The Cicada-16 supports two modes for the location of the interrupt vector table, determined by a flag in the cartridge header and configured via the **`SYS_CFG`** register at `F026`. This provides a choice between simplicity and advanced functionality.
+
+### **The SYS_CFG Register**
+
+The **`SYS_CFG`** register (`F026`) controls the interrupt vector table mode at runtime. Bit 0 (`IVT_MODE`) determines where the CPU fetches interrupt vectors from:
+
+- **IVT_MODE = 0:** Standard Mode (vectors in ROM)
+- **IVT_MODE = 1:** Enhanced Mode (vectors in RAM)
+
+This register is **writeable only during boot** and becomes **read-only after the boot sequence completes**. The boot ROM sets this bit based on the cartridge header flag. See **`IO_Peripherals.md`** for full register documentation.
 
 ### **Standard Mode (ROM-Based)**
 
 This is the default and simplest mode.
 
 - **Cartridge Header Flag**: The "Interrupt Mode" bit (Bit 7 of byte `0x0028`) is set to `0`.
-  the CPU is hardwired to look for the interrupt vector table at a fixed location within the cartridge ROM: **`0x0060 - 0x0079`** (26 bytes).
+- **Boot Behavior**: The boot ROM writes `0x00` to `SYS_CFG`, setting `IVT_MODE` to 0.
+- **Runtime Behavior**: The CPU fetches interrupt vectors from the cartridge ROM at **`0x0060 - 0x0079`** (26 bytes).
 - **Implementation**: The game developers place a static list of 16-bit addresses at this location in their ROM file. The interrupt handlers are fixed for the lifetime of the game.
 
 ### **Enhanced Mode (RAM-Based)**
@@ -116,8 +126,8 @@ This is the default and simplest mode.
 This mode enables advanced programming techniques by allowing the game to modify its interrupt handlers on the fly.
 
 - **Cartridge Header Flag**: The "Interrupt Mode" bit is set to `1`.
-- **Console Boot Behavior**: The boot ROM reads this flag and performs two actions:
-  1.  It sets a hardware latch that re-routes the CPU's interrupt vector lookups to a fixed location in Work RAM Bank 0 (WRAM0): **`0xBFE0 - 0xBFF9`** (26 bytes).
+- **Boot Behavior**: The boot ROM reads this flag and performs two actions:
+  1.  It writes `0x01` to `SYS_CFG`, setting `IVT_MODE` to 1. This configures the CPU to fetch interrupt vectors from Work RAM Bank 0 (WRAM0) at **`0xBFE0 - 0xBFF9`** (26 bytes).
   2.  It uses the DMA controller to automatically copy the 26-byte vector table from the cartridge ROM (`0x0060`, mapped to `0x4060` during boot) to WRAM (`0xBFE0`) as a default starting point.
 - **Flexibility**: Because the interrupt table is in RAM, the game can overwrite any of these vector addresses at any time to point to different handler routines, allowing for dynamic, state-based interrupt handling.
 

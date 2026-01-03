@@ -42,6 +42,7 @@ This document provides comprehensive documentation for all I/O peripherals and t
 | F023    | **TIMA1**      | **Timer 1: 8-bit counter (IRQ on overflow → IF.TMR1)**                    |
 | F024    | **TMA1**       | **Timer 1: 8-bit modulo (reload value on overflow)**                      |
 | F025    | **TAC1**       | **Timer 1 control: bit5=EN, bits4..0=clock sel**                          |
+| F026    | **SYS_CFG**    | **System Configuration: boot-time settings (R/W during boot, R after)**   |
 
 ## **Divider Registers (DIV0-DIV3)**
 
@@ -236,6 +237,39 @@ To set the time and date, the following sequence must be performed:
 ## **Cartridge Mapper and Bank Switching**
 
 To support games larger than the CPU's addressable ROM space, the console uses a cartridge-based mapper for bank switching. The mapper hardware resides on the game cartridge and is controlled by writing to I/O registers. The primary register for this is **MPR_BANK** at address F011. The value written to this register directly selects which 16 KiB ROM bank is mapped into the `4000-7FFF` address window.
+
+## **System Configuration Register (SYS_CFG)**
+
+The SYS_CFG register at F026 is a special boot-time configuration register. It is **read/write during the boot sequence** but becomes **read-only after boot** (once `BOOT_CTRL` is written to). This allows the boot ROM to configure system behavior based on cartridge header flags, while preventing games from modifying these settings at runtime.
+
+### **SYS_CFG (F026) Bit Assignments**
+
+| Bit   | Name          | Type          | Description                                                              |
+| :---- | :------------ | :------------ | :----------------------------------------------------------------------- |
+| 7-1   | -             | R/W* → R      | User-defined. Available for custom boot ROMs.                            |
+| **0** | **IVT_MODE**  | **R/W* → R**  | **Interrupt Vector Table Mode (0 = Standard/ROM, 1 = Enhanced/RAM)**     |
+
+\* Read/Write during boot only. Becomes Read-only after the `BOOT_CTRL` register is written.
+
+### **Boot-Time Behavior**
+
+During the boot sequence, the boot ROM reads the "Interrupt Mode" flag from the cartridge header (Bit 7 of byte `0x0028`) and writes to `SYS_CFG` accordingly:
+
+1. If the cartridge requests **Standard Mode** (flag = 0), the boot ROM writes `0x00` to `SYS_CFG`.
+2. If the cartridge requests **Enhanced Mode** (flag = 1), the boot ROM writes `0x01` to `SYS_CFG`.
+
+### **Post-Boot Behavior**
+
+After boot, the CPU reads bit 0 (`IVT_MODE`) of `SYS_CFG` to determine where to look for interrupt vectors:
+
+- **IVT_MODE = 0 (Standard):** The CPU fetches interrupt vectors from the cartridge ROM at `0x0060-0x0079`.
+- **IVT_MODE = 1 (Enhanced):** The CPU fetches interrupt vectors from Work RAM at `0xBFE0-0xBFF9`.
+
+Any attempt to write to `SYS_CFG` after boot will be ignored (the register behaves as read-only).
+
+### **Custom Boot ROM Usage**
+
+Bits 7-1 are not used by the standard console hardware and are available for custom boot ROMs to store additional configuration flags. These bits follow the same access rules: writable during boot, read-only after. This allows custom boot ROMs to communicate configuration state to games that are designed to work with them.
 
 ---
 
