@@ -56,7 +56,17 @@ The code on the Boot ROM executes the following steps in order:
    - Writing the source address in the Boot ROM to the `DMA_SRC` register.
    - Setting the DMA mode to `1` (System Library DMA) in the `DMA_CTL` register (bits 5-3).
    - Setting the `START` bit in `DMA_CTL`.
-3. **Display Boot Animation**: The Boot ROM displays the console logo, enables interrupts (EI), and uses its internal V-Blank ISR to perform a brief startup animation. It may read the **Boot Animation ID** from the cartridge header to select a specific visual effect.
+3. **Display Boot Animation**: The Boot ROM displays the console logo with a customizable animation effect. It performs the following steps:
+   - Reads the 4-byte **Boot Animation Configuration** block from the cartridge header at addresses `0x4000-0x4003` (which correspond to cartridge ROM addresses `0x0000-0x0003`, accessible because ROM Bank 0 is temporarily mapped to `0x4000-0x7FFF` during boot).
+   - Parses the animation configuration to determine:
+     - **Entrance animation effect** (byte 0x4000): slide, fade, wave, bounce, etc. (or random selection)
+     - **Background color** (byte 0x4001): 16 predefined colors or animated rainbow
+     - **Logo/text color** (byte 0x4002): 16 predefined colors or animated rainbow
+     - **Audio selection** (byte 0x4003): default chime, silent, or random (reserved for future use)
+   - Configures the PPU and APU according to these settings.
+   - Enables interrupts (EI) and uses its internal V-Blank ISR to perform the selected startup animation effect.
+   - Invalid animation IDs default to safe values (no animation, black background, white logo).
+   - For complete details on animation configuration values and their effects, see the "Boot Animation Configuration" section in **`Cartridge_ROM.md`**.
 4. **Cartridge Detection & Verification**: While the animation is playing, the Boot ROM checks for a cartridge and verifies its header.
 5. **Configure Game Interrupt Mode**: It reads the "Interrupt Mode" flag from the cartridge header (Bit 7 of byte `0x0028`) and writes to the **`SYS_CFG`** register (`F026`) accordingly. If the flag is `0` (Standard Mode), it writes `0x00`. If the flag is `1` (Enhanced Mode), it writes `0x01`. This configures where the CPU will look for interrupt vectors once the game starts (either the cartridge ROM or WRAM). The `SYS_CFG` register becomes read-only after boot.
 6. **Initialize RAM Vectors (If Needed)**: If "Enhanced Mode" is selected, the Boot ROM configures and triggers the DMA controller to copy the 26-byte interrupt vector table from the cartridge (at `0x4060` during boot) to WRAM (at `0xBFE0`).
