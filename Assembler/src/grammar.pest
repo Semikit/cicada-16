@@ -336,7 +336,13 @@ org_directive
 
 // --- Header Info Rules ---
 
-boot_anim = { ^".boot_anim" ~ operand }
+boot_anim_entry = { ^".boot_anim_entry" ~ operand }
+
+boot_anim_bg = { ^".boot_anim_bg" ~ operand }
+
+boot_anim_fg = { ^".boot_anim_fg" ~ operand }
+
+boot_anim_audio = { ^".boot_anim_audio" ~ operand }
 
 title = { ^".title" ~ operand }
 
@@ -357,7 +363,10 @@ hardware_rev = { ^".hardware_rev" ~ operand }
 region = { ^".region" ~ operand }
 
 header_info = {
-boot_anim
+boot_anim_entry
+| boot_anim_bg
+| boot_anim_fg
+| boot_anim_audio
 | title
 | developer
 | version

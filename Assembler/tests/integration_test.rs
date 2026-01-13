@@ -183,7 +183,10 @@ fn test_header() {
         "test.asm",
         r#"
         .header_start
-            .boot_anim "CICA"
+            .boot_anim_entry 0x01
+            .boot_anim_bg 0x02
+            .boot_anim_fg 0x03
+            .boot_anim_audio 0x04
             .title "Test-Game"
             .developer "Test-Dev"
             .version 1
@@ -203,8 +206,11 @@ fn test_header() {
 
     assert_eq!(result.len(), BANK_SIZE * 2);
 
-    // Boot Animation
-    assert_eq!(&result[0..4], b"CICA");
+    // Boot Animation bytes
+    assert_eq!(result[0], 0x01); // boot_anim_entry
+    assert_eq!(result[1], 0x02); // boot_anim_bg
+    assert_eq!(result[2], 0x03); // boot_anim_fg
+    assert_eq!(result[3], 0x04); // boot_anim_audio
 
     // Title
     let mut title_bytes = b"Test-Game".to_vec();

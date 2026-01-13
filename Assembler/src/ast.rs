@@ -16,7 +16,10 @@ limitations under the License.
 
 #[derive(Default, Debug, Clone, PartialEq)]
 pub struct HeaderInfo {
-    pub boot_anim: String,
+    pub boot_anim_entry: u8,
+    pub boot_anim_bg: u8,
+    pub boot_anim_fg: u8,
+    pub boot_anim_audio: u8,
     pub title: String,
     pub developer: String,
     pub version: u8,

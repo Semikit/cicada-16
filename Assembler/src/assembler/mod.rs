@@ -224,12 +224,13 @@ pub fn build_symbol_table<F: crate::file_reader::FileReader>(
                 }
                 Directive::Incbin(path) => {
                     // Get the file size to determine how many bytes to allocate
-                    let binary_data = reader
-                        .read_binary(std::path::Path::new(path))
-                        .map_err(|e| AssemblyError::StructuralError {
-                            line: line.line_number,
-                            reason: format!("Failed to read binary file '{}': {}", path, e),
-                        })?;
+                    let binary_data =
+                        reader
+                            .read_binary(std::path::Path::new(path))
+                            .map_err(|e| AssemblyError::StructuralError {
+                                line: line.line_number,
+                                reason: format!("Failed to read binary file '{}': {}", path, e),
+                            })?;
                     addr_counter.increment_by(binary_data.len() as u32);
                 }
                 Directive::Header(_) => {
@@ -525,19 +526,26 @@ pub fn generate_bytecode<F: crate::file_reader::FileReader>(
                 }
                 Directive::Incbin(path) => {
                     // Read the binary file and include its contents
-                    let binary_data = reader
-                        .read_binary(std::path::Path::new(path))
-                        .map_err(|e| AssemblyError::StructuralError {
-                            line: line.line_number,
-                            reason: format!("Failed to read binary file '{}': {}", path, e),
-                        })?;
+                    let binary_data =
+                        reader
+                            .read_binary(std::path::Path::new(path))
+                            .map_err(|e| AssemblyError::StructuralError {
+                                line: line.line_number,
+                                reason: format!("Failed to read binary file '{}': {}", path, e),
+                            })?;
                     addr_counter.increment_by(binary_data.len() as u32);
                     bytecode.extend(binary_data);
                 }
                 Directive::Header(info) => {
                     let mut header: Vec<u8> = Vec::new();
 
-                    header.extend(info.boot_anim.as_bytes());
+                    header.push(info.boot_anim_entry);
+
+                    header.push(info.boot_anim_bg);
+
+                    header.push(info.boot_anim_fg);
+
+                    header.push(info.boot_anim_audio);
 
                     header.extend(info.title.as_bytes());
                     if header.len() < 0x14 {

@@ -177,16 +177,17 @@ impl<'a> AstBuilder<'a> {
             let mut field_builder = AstBuilder::new(sub_directive.clone());
 
             match sub_directive.as_rule() {
-                Rule::boot_anim => {
-                    let val = field_builder.expect_string_literal()?;
-                    if val.len() != 4 {
-                        return Err(AssemblyError::StructuralError {
-                            line: line_number,
-                            reason: ".boot_anim must be exactly 4 characters.".to_string(),
-                        }
-                        .into());
-                    }
-                    info.boot_anim = val;
+                Rule::boot_anim_entry => {
+                    info.boot_anim_entry = field_builder.expect_unsigned_byte()?;
+                }
+                Rule::boot_anim_bg => {
+                    info.boot_anim_bg = field_builder.expect_unsigned_byte()?;
+                }
+                Rule::boot_anim_fg => {
+                    info.boot_anim_fg = field_builder.expect_unsigned_byte()?;
+                }
+                Rule::boot_anim_audio => {
+                    info.boot_anim_audio = field_builder.expect_unsigned_byte()?;
                 }
                 Rule::title => {
                     let val = field_builder.expect_string_literal()?;
