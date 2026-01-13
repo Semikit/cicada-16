@@ -167,22 +167,22 @@ Layers are drawn in the following order:
 
 These registers, mapped to the CPU's address space, control the PPU's operation.
 
-| Address   | Name    | Description                                                                                                                                                                |
-| :-------- | :------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| F040      | LCDC    | **LCD Control:** Master switch for the PPU. Contains bits to enable/disable the screen, background layers, sprites, and the window.                                        |
-| F041      | STAT    | **LCD Status:** Contains flags indicating the PPU's current mode (H-Blank, V-Blank, OAM Scan) and can be configured to trigger interrupts on specific events.              |
-| F042      | SCY0    | Background 0 - Vertical Scroll                                                                                                                                             |
-| F043      | SCX0    | Background 0 - Horizontal Scroll                                                                                                                                           |
-| F044      | SCY1    | Background 1 - Vertical Scroll                                                                                                                                             |
-| F045      | SCX1    | Background 1 - Horizontal Scroll                                                                                                                                           |
-| F046      | WINY    | **Window Y-Position:** The top edge of the Window layer.                                                                                                                   |
-| F047      | WINX    | **Window X-Position:** The left edge of the Window layer.                                                                                                                  |
-| F048      | LY      | **LCD Y-Coordinate:** Indicates the current vertical scanline being drawn (Read-only). Ranges from 0 to 215.                                                               |
-| F049      | LYC     | **LY Compare:** The PPU compares LY with this value. If they match, a flag is set in the STAT register, which can trigger an interrupt. Useful for scanline-based effects. |
-| F04A      | BG_MODE | **Background Mode:** Configures the size (dimensions) of the BG0 and BG1 tilemaps. Bits 1-0 = BG0 size, Bits 3-2 = BG1 size. See section 7.3.                             |
-| F04B      | BG_TMB  | **Background Tilemap Base:** Sets the 2KiB-aligned starting slot in VRAM for BG0 (bits 3-0) and BG1 (bits 7-4).                                                            |
-| F04C      | WIN_TMB | **Window Tilemap Base:** Sets the 2KiB-aligned starting slot in VRAM for the Window tilemap (bits 3-0). Bits 7-4 are reserved.                                            |
-| F04D-F07F | ---     | **Reserved**                                                                                                                                                               |
+| Address     | Name    | Description                                                                                                                                                                |
+| :---------- | :------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| F040        | LCDC    | **LCD Control:** Master switch for the PPU. Contains bits to enable/disable the screen, background layers, sprites, and the window.                                        |
+| F041        | STAT    | **LCD Status:** Contains flags indicating the PPU's current mode (H-Blank, V-Blank, OAM Scan) and can be configured to trigger interrupts on specific events.              |
+| F042-F043   | SCY0    | Background 0 - Vertical Scroll (16-bit)                                                                                                                                    |
+| F044-F045   | SCX0    | Background 0 - Horizontal Scroll (16-bit)                                                                                                                                  |
+| F046-F047   | SCY1    | Background 1 - Vertical Scroll (16-bit)                                                                                                                                    |
+| F048-F049   | SCX1    | Background 1 - Horizontal Scroll (16-bit)                                                                                                                                  |
+| F04A        | WINY    | **Window Y-Position:** The top edge of the Window layer.                                                                                                                   |
+| F04B        | WINX    | **Window X-Position:** The left edge of the Window layer.                                                                                                                  |
+| F04C        | LY      | **LCD Y-Coordinate:** Indicates the current vertical scanline being drawn (Read-only). Ranges from 0 to 215.                                                               |
+| F04D        | LYC     | **LY Compare:** The PPU compares LY with this value. If they match, a flag is set in the STAT register, which can trigger an interrupt. Useful for scanline-based effects. |
+| F04E        | BG_MODE | **Background Mode:** Configures the size (dimensions) of the BG0 and BG1 tilemaps. Bits 1-0 = BG0 size, Bits 3-2 = BG1 size. See section 7.3.                             |
+| F04F        | BG_TMB  | **Background Tilemap Base:** Sets the 2KiB-aligned starting slot in VRAM for BG0 (bits 3-0) and BG1 (bits 7-4).                                                            |
+| F050        | WIN_TMB | **Window Tilemap Base:** Sets the 2KiB-aligned starting slot in VRAM for the Window tilemap (bits 3-0). Bits 7-4 are reserved.                                            |
+| F051-F07F   | ---     | **Reserved**                                                                                                                                                               |
 
 ### **7.1. Accessing Color RAM (CRAM)**
 
@@ -190,13 +190,13 @@ Since CRAM is mapped directly to the CPU's address space (`F200-F3FF`), there ar
 
 ### **7.2. Configuring Tilemap Base Addresses**
 
-The `BG_TMB` register at `F04B` and `WIN_TMB` register at `F04C` provide an efficient way to set the starting addresses for all three tilemaps. The 32 KiB of VRAM is divided into 16 slots of 2 KiB each. These registers use a 4-bit value to specify which slot each tilemap begins in.
+The `BG_TMB` register at `F04F` and `WIN_TMB` register at `F050` provide an efficient way to set the starting addresses for all three tilemaps. The 32 KiB of VRAM is divided into 16 slots of 2 KiB each. These registers use a 4-bit value to specify which slot each tilemap begins in.
 
-**BG_TMB Register (F04B):**
+**BG_TMB Register (F04F):**
 - **BG0:** The lower 4 bits (bits 3-0) select the starting slot (0-15) for the BG0 tilemap.
 - **BG1:** The upper 4 bits (bits 7-4) select the starting slot (0-15) for the BG1 tilemap.
 
-**WIN_TMB Register (F04C):**
+**WIN_TMB Register (F050):**
 - **Window:** The lower 4 bits (bits 3-0) select the starting slot (0-15) for the Window tilemap.
 - **Bits 7-4:** Reserved, should be set to 0.
 
@@ -204,11 +204,11 @@ The PPU calculates the final base address using the formula: `base_address = slo
 - If `BG_TMB` = `0x42`: BG0's tilemap starts at slot 2 (address `0x1000`), and BG1's tilemap starts at slot 4 (address `0x2000`).
 - If `WIN_TMB` = `0x06`: Window's tilemap starts at slot 6 (address `0x3000`).
 
-### **7.3. BG_MODE Register (F04A)**
+### **7.3. BG_MODE Register (F04E)**
 
-The `BG_MODE` register at `F04A` controls the dimensions of the BG0 and BG1 tilemaps. This allows games to select different tilemap sizes based on their needs—from compact 32×32 tilemaps for static screens to large 64×64 tilemaps for expansive scrolling worlds.
+The `BG_MODE` register at `F04E` controls the dimensions of the BG0 and BG1 tilemaps. This allows games to select different tilemap sizes based on their needs—from compact 32×32 tilemaps for static screens to large 64×64 tilemaps for expansive scrolling worlds.
 
-**BG_MODE Register (F04A) Bit Assignments:**
+**BG_MODE Register (F04E) Bit Assignments:**
 
 | Bit(s) | Name       | Description                                                                                              |
 | :----- | :--------- | :------------------------------------------------------------------------------------------------------- |
@@ -239,15 +239,15 @@ The 2-bit size value selects from four possible tilemap dimensions:
 ```assembly
 ; Set BG0 to 64×64 (large scrolling world) and BG1 to 32×32 (small overlay)
 LDI R0, 0b00000011  ; BG1_SIZE=00 (32×32), BG0_SIZE=11 (64×64)
-ST.b (0xF04A), R0
+ST.b (0xF04E), R0
 
 ; Set both backgrounds to 64×32 (wide horizontal scrolling)
 LDI R0, 0b00000101  ; BG1_SIZE=01 (64×32), BG0_SIZE=01 (64×32)
-ST.b (0xF04A), R0
+ST.b (0xF04E), R0
 
 ; Set BG0 to 32×64 (tall vertical scrolling) and BG1 to 32×32
 LDI R0, 0b00000010  ; BG1_SIZE=00 (32×32), BG0_SIZE=10 (32×64)
-ST.b (0xF04A), R0
+ST.b (0xF04E), R0
 ```
 
 **VRAM Layout Considerations:**
