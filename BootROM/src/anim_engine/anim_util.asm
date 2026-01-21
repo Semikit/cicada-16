@@ -46,77 +46,57 @@ lt_done:
 
 ; ==============================================================================
 ; update_rainbow_colors
-; Update rainbow colors each frame if enabled
+; Update rainbow foreground color (index 14) each frame if rainbow mode enabled
+; Cycles through 8 rainbow colors, updating CRAM slot 0 color 14
 ; ==============================================================================
 update_rainbow_colors:
-    ; Check background rainbow
-    LD.b R0, (ANIM_BG_COLOR_ID)
-    CMPI R0, RAINBOW_ID
-    JRNZ urc_check_logo
+    ; Check if rainbow mode is enabled
+    LD.b R0, (ANIM_RAINBOW_MODE)
+    CMPI R0, 0
+    JRZ urc_done
 
-    ; Apply rainbow to background
-    CALL apply_rainbow
-    LDI R1, CRAM_START
-    ST (R1), R0
+    ; Increment rainbow timer
+    LD.b R0, (ANIM_RAINBOW_TIMER)
+    INC R0
+    ST.b (ANIM_RAINBOW_TIMER), R0
 
-urc_check_logo:
-    ; Check logo rainbow
-    LD.b R0, (ANIM_LOGO_COLOR_ID)
-    CMPI R0, RAINBOW_ID
-    JRNZ urc_done
+    ; Check if time to change color (every RAINBOW_CYCLE_RATE frames)
+    CMPI R0, RAINBOW_CYCLE_RATE
+    JRC urc_done
 
-    ; Apply rainbow to logo (offset by 2 indices for visual interest)
-    LD R0, (ANIM_FRAME_L)
-    ADDI R0, 16                     ; Offset from background rainbow
-    SRA R0
-    SRA R0
-    SRA R0
-    ANDI R0, 0x07
-    SHL R0
+    ; Reset timer
+    LDI R0, 0
+    ST.b (ANIM_RAINBOW_TIMER), R0
+
+    ; Advance rainbow color index
+    LD.b R0, (ANIM_RAINBOW_IDX)
+    INC R0
+    ANDI R0, 0x07                   ; Wrap to 0-7 range (8 colors)
+    ST.b (ANIM_RAINBOW_IDX), R0
+
+    ; Look up rainbow color: rainbow_colors + (index * 2)
+    SHL R0                          ; R0 = index * 2 (word offset)
     LDI R1, rainbow_colors
-    ADD R1, R0
-    LD R0, (R1)
+    ADD R1, R0                      ; R1 = color address
+    LD R0, (R1)                     ; R0 = RGB555 color value
 
-    ; Write to logo color index
+    ; Write to CRAM sub-palette 0, color index 14
+    ; CRAM address = CRAM_START + (FG_COLOR_INDEX * 2) = CRAM_START + 28
     LDI R1, CRAM_START
-    ADDI R1, 2
-    ST (R1), R0
+    ADDI R1, FG_COLOR_OFFSET        ; Point to color 14
+    ST (R1), R0                     ; Update FG color
 
 urc_done:
     RET
 
 ; ==============================================================================
-; apply_rainbow
-; Get current rainbow color based on frame counter
-; Output: R0 = RGB555 color value
-; Clobbers: R1
-; ==============================================================================
-apply_rainbow:
-    ; Get current frame
-    LD R0, (ANIM_FRAME_L)
-    ; Divide by 8 to slow animation
-    SRA R0
-    SRA R0
-    SRA R0
-    ; Mask to 0-7 range
-    ANDI R0, 0x07
-    ; Multiply by 2 for word offset
-    SHL R0
-    ; Add to table base
-    LDI R1, rainbow_colors
-    ADD R1, R0
-    ; Load color
-    LD R0, (R1)
-    RET
-
-; ==============================================================================
 ; fade_palette_to_black
-; Fade all palette colors toward black by one step
+; Fade all 16 palette colors toward black by one step
 ; Called incrementally every 4 frames during exit phase
 ; ==============================================================================
 fade_palette_to_black:
     LDI R3, CRAM_START
-    LDI R4, 4                       ; Process 4 colors (bg + 3 logo)
+    LDI R4, 16                      ; Process all 16 colors in sub-palette 0
 
 fptb_fade_loop:
     LD R0, (R3)                     ; Load current color
@@ -134,11 +114,11 @@ fptb_fade_loop:
 
 ; ==============================================================================
 ; set_palette_black
-; Set first 4 colors of palette to black
+; Set all 16 colors of sub-palette 0 to black
 ; ==============================================================================
 set_palette_black:
     LDI R1, CRAM_START
-    LDI R2, 4                       ; 4 colors
+    LDI R2, 16                      ; 16 colors
     LDI R0, 0x0000                  ; Black
 spb_loop:
     ST (R1), R0
@@ -149,11 +129,11 @@ spb_loop:
 
 ; ==============================================================================
 ; set_palette_white
-; Set first 4 colors of palette to white
+; Set all 16 colors of sub-palette 0 to white
 ; ==============================================================================
 set_palette_white:
     LDI R1, CRAM_START
-    LDI R2, 4                       ; 4 colors
+    LDI R2, 16                      ; 16 colors
     LDI R0, 0x7FFF                  ; White
 spw_loop:
     ST (R1), R0

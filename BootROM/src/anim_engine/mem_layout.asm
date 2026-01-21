@@ -6,8 +6,8 @@
 ; HRAM Animation State Variables (0xFE00 - 0xFE4F)
 ; ==============================================================================
 .define ANIM_ENTRANCE_ID    0xFE00      ; Entrance animation ID (from cart)
-.define ANIM_BG_COLOR_ID    0xFE01      ; Background color ID (from cart)
-.define ANIM_LOGO_COLOR_ID  0xFE02      ; Logo color ID (from cart)
+.define ANIM_PALETTE_ID     0xFE01      ; Palette ID (combined bg/logo, from cart)
+.define ANIM_RESERVED       0xFE02      ; Reserved (unused)
 .define ANIM_AUDIO_ID       0xFE03      ; Audio ID (from cart)
 
 .define ANIM_FRAME_L        0xFE04      ; Frame counter low byte
@@ -25,9 +25,12 @@
 .define ANIM_SCROLL_Y_TGT_L 0xFE10      ; Scroll Y target low byte
 .define ANIM_SCROLL_Y_TGT_H 0xFE11      ; Scroll Y target high byte
 
+.define ANIM_PALETTE_IDX    0xFE12      ; Active sub-palette index (0-15)
+.define ANIM_RAINBOW_MODE   0xFE13      ; Rainbow mode flag (0=off, 1=on)
+.define ANIM_RAINBOW_IDX    0xFE14      ; Current rainbow color index (0-7)
+.define ANIM_RAINBOW_TIMER  0xFE15      ; Rainbow color cycle timer
+
 .define ANIM_PALETTE_PHASE  0xFE16      ; Palette fade/cycle phase (0-255)
-.define ANIM_BG_RAINBOW_IDX 0xFE17      ; Background rainbow color index
-.define ANIM_LOGO_RAINBOW_IDX 0xFE18    ; Logo rainbow color index
 
 .define ANIM_SCANLINE_EFFECT 0xFE19     ; Active scanline effect type
 .define ANIM_SCANLINE_IDX   0xFE1A      ; Current scanline in effect table
@@ -47,9 +50,14 @@
 ; Animation Constants
 ; ==============================================================================
 .define ENTRANCE_COUNT      12          ; Number of defined entrance animations
-.define BG_COLOR_COUNT      16          ; Number of background colors
-.define LOGO_COLOR_COUNT    16          ; Number of logo colors
-.define RAINBOW_ID          0xFF        ; Special ID for rainbow animation
+.define PALETTE_COUNT       16          ; Number of curated palettes (0x00-0x0F)
+.define PALETTE_SIZE        32          ; Size of each palette in bytes (16 colors * 2 bytes)
+.define RAINBOW_DARK_ID     0x10        ; Rainbow animation with black background
+.define RAINBOW_LIGHT_ID    0x11        ; Rainbow animation with white background
+.define FG_COLOR_INDEX      14          ; Foreground color index in palette
+.define FG_COLOR_OFFSET     28          ; Byte offset for FG color (14 * 2)
+.define RAINBOW_COLOR_COUNT 8           ; Number of colors in rainbow table
+.define RAINBOW_CYCLE_RATE  8           ; Frames between rainbow color changes
 
 ; BG1 scroll values to center logo on screen
 ; Logo is in rows 16-47 of the 32x64 tilemap (pixels 128-383)

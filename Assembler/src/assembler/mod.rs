@@ -541,9 +541,9 @@ pub fn generate_bytecode<F: crate::file_reader::FileReader>(
 
                     header.push(info.boot_anim_entry);
 
-                    header.push(info.boot_anim_bg);
+                    header.push(info.boot_anim_palette);
 
-                    header.push(info.boot_anim_fg);
+                    header.push(0x00); // Reserved byte (was logo color)
 
                     header.push(info.boot_anim_audio);
 

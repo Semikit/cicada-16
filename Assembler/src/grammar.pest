@@ -338,9 +338,7 @@ org_directive
 
 boot_anim_entry = { ^".boot_anim_entry" ~ operand }
 
-boot_anim_bg = { ^".boot_anim_bg" ~ operand }
-
-boot_anim_fg = { ^".boot_anim_fg" ~ operand }
+boot_anim_palette = { ^".boot_anim_palette" ~ operand }
 
 boot_anim_audio = { ^".boot_anim_audio" ~ operand }
 
@@ -364,8 +362,7 @@ region = { ^".region" ~ operand }
 
 header_info = {
 boot_anim_entry
-| boot_anim_bg
-| boot_anim_fg
+| boot_anim_palette
 | boot_anim_audio
 | title
 | developer

@@ -225,9 +225,11 @@ This example demonstrates how to structure a complete, valid cartridge file usin
 .org 0x0000
 
 .header_start
-    .boot_anim "GAME"
-    .title "My Game"
-    .developer "My Company"
+    .boot_anim_entry 0x01   ; Slide down entrance
+    .boot_anim_palette 0x00 ; Classic palette (black bg, white logo)
+    .boot_anim_audio 0x00   ; Default boot chime
+    .title "My-Game"
+    .developer "My-Company"
     .version 1
     .mapper 0
     .rom_size 2 ; 64KB

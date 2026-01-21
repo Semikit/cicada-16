@@ -11,8 +11,8 @@
 ; Cartridge Animation ID Addresses (mapped at 0x4000 during boot)
 ; ==============================================================================
 .define CART_ANIM_ENTRANCE  0x4000      ; Entrance animation ID
-.define CART_ANIM_BG_COLOR  0x4001      ; Background color ID
-.define CART_ANIM_LOGO_CLR  0x4002      ; Logo color ID
+.define CART_ANIM_PALETTE   0x4001      ; Palette ID (combined bg/logo colors)
+.define CART_ANIM_RESERVED  0x4002      ; Reserved (must be 0x00)
 .define CART_ANIM_AUDIO     0x4003      ; Audio ID (reserved)
 
 .include "./anim_engine/mem_layout.asm"
@@ -123,13 +123,9 @@ read_animation_ids:
     LD.b R0, (CART_ANIM_ENTRANCE)
     ST.b (ANIM_ENTRANCE_ID), R0
 
-    ; Read background color ID
-    LD.b R0, (CART_ANIM_BG_COLOR)
-    ST.b (ANIM_BG_COLOR_ID), R0
-
-    ; Read logo color ID
-    LD.b R0, (CART_ANIM_LOGO_CLR)
-    ST.b (ANIM_LOGO_COLOR_ID), R0
+    ; Read palette ID (combined bg/logo colors)
+    LD.b R0, (CART_ANIM_PALETTE)
+    ST.b (ANIM_PALETTE_ID), R0
 
     ; Read audio ID
     LD.b R0, (CART_ANIM_AUDIO)
@@ -164,9 +160,12 @@ init_animation:
     ST (ANIM_SCROLL_Y_L), R0
     ST (ANIM_SCROLL_Y_TGT_L), R0
 
-    ; Clear palette phase
+    ; Clear palette and rainbow state
     LDI R0, 0
     ST.b (ANIM_PALETTE_PHASE), R0
+    ST.b (ANIM_RAINBOW_MODE), R0
+    ST.b (ANIM_RAINBOW_IDX), R0
+    ST.b (ANIM_RAINBOW_TIMER), R0
 
     ; Clear scanline effect
     ST.b (ANIM_SCANLINE_EFFECT), R0
@@ -177,35 +176,67 @@ init_animation:
 
 ; ==============================================================================
 ; init_colors
-; Initialize palette colors based on animation IDs
+; Initialize palette colors based on palette ID
+; Copies the selected 16-color palette to CRAM sub-palette 0
 ; ==============================================================================
 init_colors:
-    ; Set background color (CRAM index 0)
-    LD.b R0, (ANIM_BG_COLOR_ID)
-    CALL get_bg_color
-    LDI R1, CRAM_START
-    ST (R1), R0
+    ; Get palette ID
+    LD.b R0, (ANIM_PALETTE_ID)
 
-    ; Set logo colors (CRAM indices 1-3)
-    LD.b R0, (ANIM_LOGO_COLOR_ID)
-    CALL get_logo_color
+    ; Check for Rainbow Dark mode (0x10)
+    CMPI R0, RAINBOW_DARK_ID
+    JRNZ ic_check_rainbow_light
 
-    ; Store main logo color at index 1
-    LDI R1, CRAM_START
-    ADDI R1, 2                      ; Index 1
-    ST (R1), R0
+    ; Rainbow Dark - use palette 0 (Classic) as base, enable rainbow
+    LDI R0, 0                       ; Palette index 0
+    LDI R1, 1
+    ST.b (ANIM_RAINBOW_MODE), R1    ; Enable rainbow mode
+    JR ic_copy_palette
 
-    ; Create lighter shade for index 2 (simple: OR with 0x4210)
-    ORI R0, 0x4210
-    ADDI R1, 2                      ; Index 2
-    ST (R1), R0
+ic_check_rainbow_light:
+    ; Check for Rainbow Light mode (0x11)
+    CMPI R0, RAINBOW_LIGHT_ID
+    JRNZ ic_not_rainbow
 
-    ; Create darker shade for index 3 (simple: AND with 0x39CE)
-    LD.b R0, (ANIM_LOGO_COLOR_ID)
-    CALL get_logo_color
-    ANDI R0, 0x39CE
-    ADDI R1, 2                      ; Index 3
-    ST (R1), R0
+    ; Rainbow Light - use palette 1 (Inverted) as base, enable rainbow
+    LDI R0, 1                       ; Palette index 1
+    LDI R1, 1
+    ST.b (ANIM_RAINBOW_MODE), R1    ; Enable rainbow mode
+    JR ic_copy_palette
+
+ic_not_rainbow:
+    ; Standard palette mode - validate ID is in range (0-15)
+    CMPI R0, PALETTE_COUNT
+    JRC ic_valid_id
+    LDI R0, 0                       ; Default to palette 0 (Classic)
+
+ic_valid_id:
+    ; Clear rainbow mode flag
+    LDI R1, 0
+    ST.b (ANIM_RAINBOW_MODE), R1
+
+ic_copy_palette:
+    ; Calculate source address: palette_table + (palette_id * 32)
+    ; R0 = palette index
+    SHL R0                          ; R0 = R0 * 2
+    SHL R0                          ; R0 = R0 * 4
+    SHL R0                          ; R0 = R0 * 8
+    SHL R0                          ; R0 = R0 * 16
+    SHL R0                          ; R0 = R0 * 32 (PALETTE_SIZE)
+    LDI R1, palette_table
+    ADD R0, R1                      ; R0 = source address
+
+    ; Copy selected palette to CRAM sub-palette 0 using DMA
+    ; Source: calculated palette address (32 bytes)
+    ; Destination: CRAM slot 0
+    LDI R1, 0                       ; DMA destination: CRAM slot 0
+    LDI R2, 1                       ; Number of sub-palettes to copy (1)
+    LDI R3, 0x1D                    ; DMA_MODE: 3 (CRAM), VRAM_SAFE: 1, DMA_START: 1
+
+    ST (DMA_SRC), R0
+    ST (DMA_DST), R1
+    ST (DMA_LEN), R2
+    ST.b (DMA_CTL), R3
 
     RET
 
@@ -384,60 +415,6 @@ ale_exit_complete:
     ; Mark animation as complete
     LDI R0, 1
     ST.b (ANIM_COMPLETE), R0
-    RET
-
-; ==============================================================================
-; get_bg_color
-; Look up background color from ID
-; Input: R0 = color ID
-; Output: R0 = RGB555 color value
-; Clobbers: R1
-; ==============================================================================
-get_bg_color:
-    ; Check for rainbow (0xFF)
-    CMPI R0, RAINBOW_ID
-    JRNZ gbc_not_rainbow
-    CALL apply_rainbow
-    RET
-
-gbc_not_rainbow:
-    ; Validate ID is in range
-    CMPI R0, BG_COLOR_COUNT
-    JRC gbc_valid
-    LDI R0, 0                       ; Default to black
-
-gbc_valid:
-    SHL R0                          ; Word offset
-    LDI R1, bg_color_table
-    ADD R1, R0
-    LD R0, (R1)
-    RET
-
-; ==============================================================================
-; get_logo_color
-; Look up logo color from ID
-; Input: R0 = color ID
-; Output: R0 = RGB555 color value
-; Clobbers: R1
-; ==============================================================================
-get_logo_color:
-    ; Check for rainbow (0xFF)
-    CMPI R0, RAINBOW_ID
-    JRNZ glc_not_rainbow
-    CALL apply_rainbow
-    RET
-
-glc_not_rainbow:
-    ; Validate ID is in range
-    CMPI R0, LOGO_COLOR_COUNT
-    JRC glc_valid
-    LDI R0, 0                       ; Default to white (index 0)
-
-glc_valid:
-    SHL R0                          ; Word offset
-    LDI R1, logo_color_table
-    ADD R1, R0
-    LD R0, (R1)
     RET
 
 ; ==============================================================================
