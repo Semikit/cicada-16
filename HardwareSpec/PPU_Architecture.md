@@ -31,7 +31,47 @@ The PPU's graphics are built from layers of tiles, which are configured by data 
 
 By hardware rule, the **Tile Graphics Area** is always assumed to begin at address `0x0000` in VRAM. The developer can then place their **Tilemap Areas** anywhere else in VRAM. The PPU supports three independent tilemaps (BG0, BG1, and Window), each with its location and size defined by PPU registers (`BG_TMB` and `WIN_TMB`), giving the developer full control over how VRAM is partitioned.
 
-### **3.2. Tilemap Data Format**
+VRAM is divided into **16 slots of 2 KiB each** (32 KiB total). Each 2 KiB slot holds exactly one 32×32 tile block:
+
+```
+32 tiles × 32 tiles × 2 bytes/entry = 2,048 bytes = 1 slot
+```
+
+For tilemaps larger than 32×32, multiple slots are combined. Each 2 KiB slot always represents a 32×32 tile block; larger tilemaps arrange multiple blocks spatially.
+
+### **3.2. Block-Based Tilemap Layout**
+
+Larger tilemaps combine multiple 32×32 blocks in a specific arrangement:
+
+**64×32 (2 blocks, horizontal):** Blocks are side-by-side, with `tile_x < 32` in slot N and `tile_x >= 32` in slot N+1.
+
+**32×64 (2 blocks, vertical):** Blocks are stacked, with `tile_y < 32` in slot N and `tile_y >= 32` in slot N+1.
+
+**64×64 (4 blocks, 2×2 grid):** Blocks are arranged left-to-right, then top-to-bottom:
+```
++--------+--------+
+| N (TL) | N+1(TR)|    Block index = (tile_y / 32) × 2 + (tile_x / 32)
++--------+--------+
+| N+2(BL)| N+3(BR)|
++--------+--------+
+```
+
+**Address Calculation (all sizes):**
+```
+block_x = tile_x / 32
+block_y = tile_y / 32
+local_x = tile_x % 32
+local_y = tile_y % 32
+
+blocks_wide = tilemap_width / 32        ; 1 for 32-wide, 2 for 64-wide
+block_index = block_y × blocks_wide + block_x
+block_offset = block_index × 2048
+local_offset = (local_y × 32 + local_x) × 2
+
+tile_address = tilemap_base + block_offset + local_offset
+```
+
+### **3.3. Tilemap Data Format**
 
 A tilemap is a 2D grid of 16-bit entries. Each entry tells the PPU which tile to draw at a position, and how to draw it.
 Notice that the PAL data field is only 3 bits, so it is only able to index 8 out of the total 16 sub-palettes stored in the master palette in CRAM. Background tiles are limited to using the first 8 sub-palettes (0-7), while sprites have access to all 16.
@@ -46,7 +86,7 @@ Notice that the PAL data field is only 3 bits, so it is only able to index 8 out
 | **8**  | **`INDEX_8`**    | **The 9th bit of the tile index.**  |
 | 7-0    | **`INDEX_7_0`**  | The lower 8 bits of the tile index. |
 
-### **3.3. Tile Graphics Data Format (4bpp Planar)**
+### **3.4. Tile Graphics Data Format (4bpp Planar)**
 
 Each 8x8 tile requires 32 bytes of storage in VRAM. These 32 bytes are organized into four **bit planes**. Each plane holds one bit of the 4-bit color index for all 64 pixels in the tile.
 
