@@ -76,8 +76,8 @@ The 4 KiB (4096 bytes) of System Library RAM is allocated as follows:
 | 0x16      | Function   | `setBankWRAM`            |
 | 0x17      | Function   | `setBankVRAM`            |
 | 0x18      | Function   | `playSoundEffect`        |
-| 0x19      | Function   | `initMusicDriver`        |
-| 0x1A      | Function   | `updateMusicDriver`      |
+| 0x19      | ---        | *Reserved*               |
+| 0x1A      | ---        | *Reserved*               |
 | 0x1B      | Function   | `readJoypad`             |
 | 0x1C      | Function   | `readJoypadTrigger`      |
 | 0x1D      | Function   | `rand`                   |
@@ -91,7 +91,13 @@ The 4 KiB (4096 bytes) of System Library RAM is allocated as follows:
 | 0x25      | Function   | `dmaPalette`             |
 | 0x26      | Function   | `dmaWaveforms`           |
 | 0x27      | Function   | `dmaFill`                |
-| 0x28-0x7F | ---        | **Unused**               |
+| 0x28      | Function   | `poolInit`               |
+| 0x29      | Function   | `poolAlloc`              |
+| 0x2A      | Function   | `poolFree`               |
+| 0x2B      | Function   | `stackInit`              |
+| 0x2C      | Function   | `stackAlloc`             |
+| 0x2D      | Function   | `stackFree`              |
+| 0x2E-0x7F | ---        | **Unused**               |
 
 ## **System Library Functions and Data**
 
@@ -400,27 +406,6 @@ This would be a huge quality-of-life improvement. Instead of manually setting 5-
 - **Output:** None.
 - **Clobbered Registers:** R2.
 
-### `initMusicDriver` : Index 0x19
-
-A simple, tick-based music driver. initMusicDriver would take a pointer to the song data and set up internal state variables.
-
-- **Inputs:**
-  - R0: Pointer to music data
-- **Action:**
-  - Initializes the music driver with the given song data.
-- **Output:** None.
-- **Clobbered Registers:** Varies (would need several internal state registers).
-
-### `updateMusicDriver` : Index 0x1A
-
-updateMusicDriver would be called once per frame (typically from the V-Blank interrupt) to process the next "tick" of the song data, read note/effect commands, and update the APU registers accordingly. This abstracts away the entire complexity of a music tracker engine.
-
-- **Inputs:** None.
-- **Action:**
-  - Processes the next tick of the current song data and updates the APU.
-- **Output:** None.
-- **Clobbered Registers:** Varies (would need several internal state registers).
-
 ### `readJoypad` : Index 0x1B
 
 This function performs the necessary sequence of writes and reads to the JOYP register to poll all three button groups (D-Pad, Action, Utility). It then combines the results into a single, clean 16-bit bitmask. This is much more convenient than doing it manually.
@@ -670,6 +655,240 @@ LDI R0, 0x0042
 LDI R1, tilemap_addr
 LDI R2, 256         ; Fill 256 words
 SYSCALL 0x27        ; dmaFill
+```
+
+---
+
+## **Memory Management Functions**
+
+The System Library provides two lightweight memory management systems for different allocation patterns. Both systems operate on developer-provided memory regions and use small header structures to track allocator state.
+
+### `poolInit` : Index 0x28
+
+Initializes a memory pool allocator for fixed-size block allocation. The pool uses a linked-list strategy where each free block stores the address of the next free block, enabling O(1) allocation and deallocation.
+
+- **Inputs:**
+  - `R0`: Base address of the memory region to use for the pool
+  - `R1`: Size of each block in bytes (minimum 2 bytes)
+  - `R2`: Number of blocks to create
+- **Action:**
+  1.  Writes the pool header at the base address:
+      - Bytes 0-1: Address of the first free block (head of free list)
+      - Bytes 2-3: Block size
+      - Bytes 4-5: Total block count
+  2.  Initializes the free list by writing the address of the next free block into each block, with the last block containing `0x0000` (null) to indicate end of list.
+  3.  The usable pool memory begins immediately after the 6-byte header.
+- **Output:**
+  - `R0`: Address of the pool header (same as input, for convenience)
+- **Clobbered Registers:** `R1`, `R2`, `R3`.
+- **Memory Layout:**
+
+```
+Pool Header (6 bytes):
+  +0: Free list head pointer (2 bytes)
+  +2: Block size (2 bytes)
+  +4: Block count (2 bytes)
+
+Pool Blocks (immediately following header):
+  Block 0: [Next free ptr | ... unused space ...]
+  Block 1: [Next free ptr | ... unused space ...]
+  ...
+  Block N: [0x0000 (null) | ... unused space ...]
+```
+
+**Example:**
+
+```assembly
+; Create a pool of 32 blocks, each 16 bytes, at address 0x8000
+LDI R0, 0x8000
+LDI R1, 16          ; Block size
+LDI R2, 32          ; Number of blocks
+SYSCALL 0x28        ; poolInit
+; R0 now contains 0x8000 (pool header address)
+; Total memory used: 6 + (32 × 16) = 518 bytes
+```
+
+### `poolAlloc` : Index 0x29
+
+Allocates a single block from a memory pool. Returns the address of the allocated block in O(1) time by removing it from the head of the free list.
+
+- **Inputs:**
+  - `R0`: Address of the pool header
+- **Action:**
+  1.  Reads the free list head pointer from the pool header.
+  2.  If the head pointer is null (0x0000), the pool is exhausted; sets the Carry Flag and returns.
+  3.  Reads the next free block pointer from the allocated block.
+  4.  Updates the pool header's free list head to point to the next free block.
+  5.  Returns the address of the allocated block.
+- **Output:**
+  - `R0`: Address of the allocated block, or `0x0000` if pool is exhausted.
+  - **Carry Flag (F.C):** Set to 1 if allocation failed (pool exhausted), cleared otherwise.
+- **Clobbered Registers:** `R1`.
+
+**Example:**
+
+```assembly
+; Allocate a block from the pool
+LDI R0, pool_header
+SYSCALL 0x29        ; poolAlloc
+JC .alloc_failed    ; Jump if Carry is set (pool exhausted)
+; R0 now contains the address of the allocated block
+ST.w (my_block_ptr), R0
+```
+
+### `poolFree` : Index 0x2A
+
+Returns a previously allocated block to the memory pool. The block is added to the head of the free list in O(1) time.
+
+- **Inputs:**
+  - `R0`: Address of the pool header
+  - `R1`: Address of the block to free
+- **Action:**
+  1.  Reads the current free list head pointer from the pool header.
+  2.  Writes the current head pointer into the block being freed (making it point to the old head).
+  3.  Updates the pool header's free list head to point to the newly freed block.
+- **Output:** None.
+- **Clobbered Registers:** `R2`.
+- **Important Note:** The developer is responsible for ensuring the block address is valid and was previously allocated from this pool. Freeing an invalid address will corrupt the pool's free list.
+
+**Example:**
+
+```assembly
+; Free a block back to the pool
+LDI R0, pool_header
+LD.w R1, (my_block_ptr)
+SYSCALL 0x2A        ; poolFree
+```
+
+---
+
+### `stackInit` : Index 0x2B
+
+Initializes a stack allocator for variable-size block allocation in FILO (First-In, Last-Out) order. The stack grows upward from a base address toward a maximum boundary.
+
+- **Inputs:**
+  - `R0`: Base address of the memory region to use for the stack
+  - `R1`: Total size of the stack region in bytes
+- **Action:**
+  1.  Writes the stack header at the base address:
+      - Bytes 0-1: Current stack top pointer (initially points to first usable byte after header)
+      - Bytes 2-3: Stack base address (first usable byte after header)
+      - Bytes 4-5: Stack ceiling address (base + size, the first invalid address)
+  2.  The usable stack memory begins immediately after the 6-byte header.
+- **Output:**
+  - `R0`: Address of the stack header (same as input, for convenience)
+- **Clobbered Registers:** `R1`, `R2`.
+- **Memory Layout:**
+
+```
+Stack Header (6 bytes):
+  +0: Stack top pointer (2 bytes) - points to next free byte
+  +2: Stack base address (2 bytes)
+  +4: Stack ceiling address (2 bytes)
+
+Stack Memory (grows upward):
+  [Base] -> [Allocation 1][Size1] -> [Allocation 2][Size2] -> ... -> [Top]
+                          ^-- 2-byte size stored after each allocation
+```
+
+**Example:**
+
+```assembly
+; Create a stack allocator with 1024 bytes at address 0x9000
+LDI R0, 0x9000
+LDI R1, 1024
+SYSCALL 0x2B        ; stackInit
+; Usable stack space: 1024 - 6 = 1018 bytes
+```
+
+### `stackAlloc` : Index 0x2C
+
+Allocates a block of the specified size from the stack. The allocation is pushed onto the top of the stack, and a 2-byte size field is stored after the allocation data to enable proper deallocation.
+
+- **Inputs:**
+  - `R0`: Address of the stack header
+  - `R1`: Size of the block to allocate in bytes
+- **Action:**
+  1.  Reads the current stack top pointer and ceiling address from the header.
+  2.  Calculates the new top position: `current_top + size + 2` (2 bytes for size field).
+  3.  If the new top would exceed the ceiling, allocation fails; sets the Carry Flag and returns.
+  4.  Stores the allocation size (2 bytes) at `current_top + size`.
+  5.  Updates the stack header's top pointer to the new position.
+  6.  Returns the address of the allocated block (the old top pointer).
+- **Output:**
+  - `R0`: Address of the allocated block, or `0x0000` if stack overflow.
+  - **Carry Flag (F.C):** Set to 1 if allocation failed (stack overflow), cleared otherwise.
+- **Clobbered Registers:** `R1`, `R2`, `R3`.
+
+**Example:**
+
+```assembly
+; Allocate 64 bytes from the stack
+LDI R0, stack_header
+LDI R1, 64
+SYSCALL 0x2C        ; stackAlloc
+JC .stack_overflow  ; Jump if allocation failed
+; R0 now contains the address of the 64-byte block
+ST.w (temp_buffer), R0
+```
+
+### `stackFree` : Index 0x2D
+
+Deallocates the most recently allocated block from the stack (FILO order). Reads the size field stored after the top allocation to determine how much to pop.
+
+- **Inputs:**
+  - `R0`: Address of the stack header
+- **Action:**
+  1.  Reads the current stack top pointer and base address from the header.
+  2.  If the top pointer equals the base address, the stack is empty; sets the Carry Flag and returns.
+  3.  Reads the 2-byte size field located at `top - 2`.
+  4.  Calculates the new top position: `top - size - 2`.
+  5.  Updates the stack header's top pointer to the new position.
+- **Output:**
+  - `R0`: Address of the freed block (the block that was just deallocated), or `0x0000` if stack was empty.
+  - `R1`: Size of the freed block in bytes.
+  - **Carry Flag (F.C):** Set to 1 if deallocation failed (stack empty), cleared otherwise.
+- **Clobbered Registers:** `R2`.
+- **Important Note:** Stack allocations must be freed in reverse order (FILO). Attempting to free allocations out of order will corrupt the stack.
+
+**Example:**
+
+```assembly
+; Free the most recent allocation
+LDI R0, stack_header
+SYSCALL 0x2D        ; stackFree
+JC .stack_empty     ; Jump if stack was already empty
+; R0 = address of freed block, R1 = size of freed block
+```
+
+**Complete Stack Usage Example:**
+
+```assembly
+; Initialize stack
+LDI R0, 0x9000
+LDI R1, 512
+SYSCALL 0x2B        ; stackInit
+ST.w (stack_hdr), R0
+
+; Allocate 32 bytes
+LD.w R0, (stack_hdr)
+LDI R1, 32
+SYSCALL 0x2C        ; stackAlloc
+ST.w (block_a), R0
+
+; Allocate 48 bytes
+LD.w R0, (stack_hdr)
+LDI R1, 48
+SYSCALL 0x2C        ; stackAlloc
+ST.w (block_b), R0
+
+; Free block_b (must free in reverse order)
+LD.w R0, (stack_hdr)
+SYSCALL 0x2D        ; stackFree - frees block_b
+
+; Free block_a
+LD.w R0, (stack_hdr)
+SYSCALL 0x2D        ; stackFree - frees block_a
 ```
 
 ---
