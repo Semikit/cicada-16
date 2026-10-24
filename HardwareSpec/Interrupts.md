@@ -21,7 +21,7 @@ The process for triggering and handling an interrupt or CPU fault is as follows:
     b. Pushes the current 16-bit Program Counter (PC) to the stack.
     c. Pushes the current 16-bit Flags register (F) to the stack.
     d. Jumps to the address specified for that interrupt or fault in the **Interrupt Vector Table**.
-5.  The code at that address, the Interrupt Service Routine (ISR) or Fault Handler, is executed.
+5.  The code at that address, the Interrupt Service Routine (ISR) or Fault Handler, is executed. Steps 4a-4d take a fixed **16 T-cycles** (two 16-bit stack pushes), measured from the end of the interrupted instruction to the first fetch of the handler. The vector table read is not charged separately, consistent with `SYSCALL`.
 6.  Inside the ISR, the programmer is responsible for manually clearing the interrupt flag in the `IF` register by writing a `1` to its bit. This prevents the interrupt from immediately re-triggering after the ISR is complete. (This step is not applicable for CPU Faults, as they are not tied to `IF` bits).
 7.  The ISR/Fault Handler must end with the `RETI` (Return from Interrupt) instruction, which pops the original F register, then the PC from the stack, and re-enables the master interrupt switch.
 
@@ -39,6 +39,8 @@ The Cicada-16 has eight hardware interrupt sources, controlled via the `IE` (`F0
 | 2   | **LYC == LY**   | Occurs when the PPU's `LY` register equals the `LYC` register.              |
 | 1   | **H-Blank**     | Occurs when the PPU enters the H-Blank period.                              |
 | 0   | **V-Blank**     | Occurs when the PPU enters the V-Blank period.                              |
+
+The three PPU interrupts (V-Blank, H-Blank, and LYC == LY) are gated twice. The PPU only sets the corresponding `IF` bit if the matching enable bit in the PPU's `STAT` register (`VBLK_INT_EN`, `HBLK_INT_EN`, `LYC_INT_EN`) is set. The `IE` bit then controls whether the CPU services the pending flag. See `PPU_Architecture.md` section 9.
 
 ### **IE (F020) - Interrupt Enable Register**
 
@@ -74,12 +76,33 @@ This register holds the flags for pending hardware interrupts. When a hardware e
 
 CPU Faults are critical, non-maskable events triggered by illegal or dangerous operations detected by the processor. Unlike hardware interrupts, they are not controlled by the `IE` and `IF` registers and will always be serviced immediately. When a fault occurs, the CPU pushes the PC and Flags register to the stack and jumps to the corresponding fault handler in the Interrupt Vector Table.
 
-- **Bus Error:** Triggered when a 16-bit word (e.g., from an `LD.w` instruction) is accessed from an odd memory address. All 16-bit memory accesses must be aligned to an even address.
+- **Bus Error:** Triggered when a 16-bit word (e.g., from an `LD r, (n16)` instruction) is accessed from an odd memory address. All 16-bit memory accesses must be aligned to an even address.
 - **Illegal Instruction:** Triggered when the CPU attempts to execute an opcode that is not defined in the instruction set, including any reserved or unused opcode values.
-- **Protected Memory:** Triggered when a write operation is attempted on a memory region that is designated as read-only. This includes the cartridge ROM space (`0x0000-0x7FFF`), the System Library RAM (`E000-EFFF`) after boot.
+- **Protected Memory:** Triggered when a write operation is attempted on a memory region that is designated as read-only. This includes the cartridge ROM space (`0x0000-0x7FFF`), the System Library RAM (`E000-EFFF`) after boot, the `SYS_CFG` register (`F026`) after boot, and Cartridge RAM (`0x8000-0x8FFF`) while the `WE_LATCH` register is locked or when the cartridge has no RAM. DMA writes are subject to the same rule.
 - **Stack Overflow:** Triggered if the Stack Pointer (SP) register decrements below the base of the stack memory region (`0xC000`). This helps catch runaway recursive calls or stack corruption before it overwrites other critical memory.
 
-## **5. Interrupt Vector Table**
+## **5. The RESET Interrupt**
+
+The console has a physical **Reset button**. Pressing it raises the **RESET** interrupt, which performs a *warm* reset: the boot ROM is **not** re-run, memory is **not** cleared, and the game regains control through its own RESET vector. This mirrors the behavior of the reset button on classic cartridge consoles, where the game itself decides what "reset" means (usually a return to the title screen).
+
+RESET is non-maskable. It has no `IE` or `IF` bit and cannot be disabled or cleared by software. It is edge-triggered: holding the button down does not retrigger it.
+
+When RESET is raised, the CPU performs the following sequence:
+
+1. Exits `HALT` if halted, and discards any instruction in the pipeline.
+2. Aborts any DMA transfer in progress and clears the `START` bit in `DMA_CTL`. Data already transferred is left in place.
+3. Clears the master interrupt switch (as if `DI` had been executed).
+4. Clears any pending CPU fault.
+5. Sets the stack pointer (`R7`) to `0xD000`. Nothing is pushed to the stack, as there is nothing to return to.
+6. Jumps to the address in the RESET vector (offset `+0x0` of the Interrupt Vector Table).
+
+Everything else is left untouched: all RAM (WRAM, HRAM, VRAM, OAM, CRAM, Wave RAM, the DSP buffer), every PPU, APU, timer, DMA, serial, and bank register, the `WE_LATCH` and `SYS_CFG` registers, and the RTC. The RESET handler is responsible for re-initializing whatever the game needs. Because RAM survives, a handler can inspect a signature value left in RAM to distinguish a warm reset from a cold power-on, and choose to skip an intro or preserve session data.
+
+The RESET vector is fetched from the active vector table like any other vector. In Standard Mode that is the cartridge ROM copy at `0x0060`; in Enhanced Mode it is the WRAM copy at `0xBFE0`, which the game may modify at runtime like any other vector. If the Reset button is pressed while the boot ROM is still running, the boot ROM's internal vector table is used and the boot sequence restarts.
+
+There is no software-initiated cold reset. Once the boot ROM has handed over to the game, it cannot be re-entered without a power cycle. A game that wants to reset itself warm can simply read the RESET vector and jump to it.
+
+## **6. Interrupt Vector Table**
 
 The Interrupt Vector Table is a 26-byte block of memory containing the 16-bit addresses for each ISR or Fault Handler. The layout below is defined by its offset from the table's base address. The order also determines priority if multiple interrupts or faults occur simultaneously.
 
@@ -99,7 +122,7 @@ The Interrupt Vector Table is a 26-byte block of memory containing the 16-bit ad
 | `+0x16`               | `Link Status`           | 7         |
 | `+0x18`               | `Joypad`                | 8         |
 
-## **6. Vector Table Location Modes**
+## **7. Vector Table Location Modes**
 
 The Cicada-16 supports two modes for the location of the interrupt vector table, determined by a flag in the cartridge header and configured via the **`SYS_CFG`** register at `F026`. This provides a choice between simplicity and advanced functionality.
 

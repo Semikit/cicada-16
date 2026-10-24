@@ -25,25 +25,28 @@ This section details the memory-mapped registers used to control all APU functio
 | F092      | **reserved** | Reserved for future use                                    |
 | F093      | CH3_CTRL     | Noise channel: Control Register                            |
 | F094-F095 | CH3_ADSR     | ADSR settings for Channel 3                                |
-| F096      | MIX_CTRL     | Master APU enable, individual channel enables              |
-| F097      | MIX_VOL      | Master volume: Left (bits 7-4), Right (bits 3-0), 0-15 each |
+| F096-F097 | CH3_FREQ     | 16-bit frequency (LFSR clock) for Channel 3                |
 | F098      | **reserved** | Reserved for future use                                    |
-| F099      | CH0_OUT      | Pulse A channel stereo volume/panning control (L: 7-4, R: 3-0) |
-| F09A      | CH1_OUT      | Pulse B channel stereo volume/panning control (L: 7-4, R: 3-0) |
-| F09B      | CH2_OUT      | Wave channel stereo volume/panning control (L: 7-4, R: 3-0)    |
-| F09C      | CH3_OUT      | Noise channel stereo volume/panning control (L: 7-4, R: 3-0)   |
-| F09D      | DSP_CTRL     | DSP Control Register                                       |
-| F09E      | DSP_DELAY    | Delay time/length (controls read offset into delay buffer) |
-| F09F      | DSP_FBACK    | Feedback level (0-15). Controls echo decay.                |
-| F0A0      | DSP_WET      | Wet signal mix level (0-15). Controls echo volume.         |
-| F0A1-F0BF | **reserved** | Reserved for future use                                    |
+| F099      | MIX_CTRL     | Master APU enable, individual channel enables              |
+| F09A      | MIX_VOL      | Master volume: Left (bits 7-4), Right (bits 3-0), 0-15 each |
+| F09B      | CH0_OUT      | Pulse A channel stereo volume/panning control (L: 7-4, R: 3-0) |
+| F09C      | CH1_OUT      | Pulse B channel stereo volume/panning control (L: 7-4, R: 3-0) |
+| F09D      | CH2_OUT      | Wave channel stereo volume/panning control (L: 7-4, R: 3-0)    |
+| F09E      | CH3_OUT      | Noise channel stereo volume/panning control (L: 7-4, R: 3-0)   |
+| F09F      | DSP_CTRL     | DSP Control Register                                       |
+| F0A0      | DSP_DELAY    | Delay time/length (controls read offset into delay buffer) |
+| F0A1      | DSP_FBACK    | Feedback level (0-15). Controls echo decay.                |
+| F0A2      | DSP_WET      | Wet signal mix level (0-15). Controls echo volume.         |
+| F0A3-F0BF | **reserved** | Reserved for future use                                    |
+
+Each channel occupies a uniform 6-byte block starting at `F081 + (channel × 6)`: offset 0 is `CTRL`, offsets 1-2 are `ADSR`, offsets 3-4 are `FREQ`, and offset 5 is the channel's extra register (`SWP` on Channel 0, reserved on the others). This lets a music driver address any channel's registers by computing a base address.
 
 ## **2. Core Features**
 
 - **4 Independent Channels**: The APU can play four sounds simultaneously.
 - **Channel 0 (Pulse A)**: A square wave generator with variable duty cycle and a hardware frequency sweep unit.
 - **Channel 1 (Pulse B)**: A second square wave generator, identical to Pulse A but without the sweep unit.
-- **Channel 2 (Wave)**: A flexible waveform generator that plays back a custom 32-sample waveform from Wave RAM.
+- **Channel 2 (Wave)**: A flexible waveform generator that plays back a custom 64-sample waveform from Wave RAM.
 - **Channel 3 (Noise)**: A noise generator capable of producing various "colors" of noise for percussion and SFX.
 - **ADSR Envelopes**: The Pulse, Wave, and Noise channels each feature a unified, hardware-based 4-stage ADSR volume envelope.
 - **DSP (Digital Signal Processor)**: A simple hardware unit for creating an echo/delay effect.
@@ -61,7 +64,7 @@ The two pulse channels generate simple square waves. They are controlled by a se
 
 ### 3.1. Frequency and Pitch
 
-The pitch of the two pulse channels is determined by the 16-bit value in their respective `CHx_FREQ` registers (F084-F085 for CH0, F089-F08A for CH1). The APU uses a master clock of **2.097152 MHz**. The output frequency is calculated with the following formula:
+The pitch of the two pulse channels is determined by the 16-bit value in their respective `CHx_FREQ` registers (F084-F085 for CH0, F08A-F08B for CH1). The APU uses a master clock of **2.097152 MHz**. The output frequency is calculated with the following formula:
 
 **`Output Frequency (Hz) = 2,097,152 / (64 * (65536 - FREQ_REG))`**
 
@@ -150,7 +153,7 @@ This simplifies to the final formula:
 
 **`Output Pitch (Hz) = 2,097,152 / (64 * (65536 - FREQ_REG))`**
 
-Where `FREQ_REG` is the 16-bit value from the `CH2_FREQ` register (F08E-F08F).
+Where `FREQ_REG` is the 16-bit value from the `CH2_FREQ` register (F090-F091).
 
 **Note:** Because this formula is identical to the one for the pulse channels, the same note frequency values from the System Library's lookup table can be used for Channel 2.
 
@@ -170,7 +173,8 @@ This value will cause the 64 samples of the waveform to be played back at a rate
 | :-- | :-------- | :------------------------------------------------------------------------------------------------------ |
 | 7   | KEY_ON    | 1 = Note On (Attack->Decay->Sustain). 0 = Note Off (Release). The channel is active when this bit is 1. |
 | 6   | RETRIGGER | Restart ADSR attack phase. Automatically clears to 0 after triggering. See section 6 for details.       |
-| 5-0 | WAVE_IDX  | Selects which 32-byte waveform to play from Wave RAM (0-31).                                            |
+| 5   | -         | Unused.                                                                                                 |
+| 4-0 | WAVE_IDX  | Selects which 32-byte waveform to play from Wave RAM (0-31).                                            |
 
 #### **F090-F091: CH2_FREQ**
 
@@ -182,48 +186,46 @@ The noise channel generates pseudo-random noise, which is essential for creating
 
 ### 5.1. LFSR Implementation
 
-The LFSR is a shift register whose input bit is derived from the exclusive-OR (XOR) of two bits in its own state. At each clock tick, all bits are shifted one position to the right, and the new input bit becomes the most significant bit (MSB). The output of the channel is determined by the least significant bit (LSB).
+The noise generator is a single 15-bit Linear Feedback Shift Register. Bit positions below are **0-indexed** (bit 0 is the least significant bit). On every LFSR clock:
 
-The `LFSR_MODE` bit in the `CH3_CTRL` register selects between two different LFSR configurations, which produce different timbres:
+1. The feedback bit is computed as **`bit 0 XOR bit 1`** of the current state.
+2. The whole register is shifted one position to the **right** (toward bit 0).
+3. The feedback bit is inserted at the top of the active width: **bit 14** in 15-bit mode, or **bit 6** in 7-bit mode.
 
-- **Mode 0 (15-bit LFSR):**
-  - Creates a full, dense "white noise" sound.
-  - The new input bit is the result of `Bit 14 XOR Bit 15`.
-- **Mode 1 (7-bit LFSR):**
-  - Creates a metallic, periodic sound because the sequence of pseudo-random numbers is much shorter.
-  - The new input bit is the result of `Bit 6 XOR Bit 7`.
+The `LFSR_MODE` bit in the `CH3_CTRL` register selects the active width:
 
-The channel's audio output is `1` if the LSB of the LFSR is `0`, and `-1` if the LSB is `1`. This output is then scaled by the channel's current ADSR envelope volume.
+- **Mode 0 (15-bit LFSR):** All 15 bits participate. The sequence is 32,767 steps long and sounds like dense white noise.
+- **Mode 1 (7-bit LFSR):** Only bits 0-6 participate; the feedback bit is inserted at bit 6 and bits 7-14 are ignored. The sequence is 127 steps long, giving a metallic, periodic tone with a definite pitch (see section 5.2).
+
+Both tap configurations are maximal-length, so the register never reaches the all-zero (locked) state from a non-zero seed.
+
+- **Seed:** The register is set to all ones (`0x7FFF`) at power-on and on every `KEY_ON` 0→1 transition or `RETRIGGER`. Reseeding on each note makes the 7-bit metallic waveform start from the same phase every time, which keeps tuned notes consistent.
+- **Mode changes:** Switching `LFSR_MODE` does not reseed; the low 7 bits simply continue from their current state.
+
+The channel's audio output is `+1` if bit 0 of the LFSR is `0`, and `-1` if bit 0 is `1`. This output is then scaled by the channel's current ADSR envelope volume.
 
 ### 5.2. Noise Frequency
 
-The "pitch" of the noise is controlled by the rate at which the LFSR is clocked. This clock rate is derived from the master APU clock and the 5-bit `CLK_DIV` value in the `CH3_CTRL` register.
+The "pitch" of the noise is controlled by the rate at which the LFSR is clocked. Like the other three channels, this is set by a 16-bit frequency register, `CH3_FREQ` (F096-F097), derived from the master APU clock:
 
-Unlike the pulse and wave channels, the noise channel uses a **non-linear mapping** from the `CLK_DIV` value to the actual divider bit in the system's 32-bit free-running counter. This mapping provides optimal frequency resolution in the musically useful percussion range while still allowing access to ultra-low rumble frequencies.
+**`LFSR Clock Rate (Hz) = 2,097,152 / (65536 - FREQ_REG)`**
 
-**Mapping Formula:**
+Where `FREQ_REG` is the 16-bit value in `CH3_FREQ`. The LFSR is stepped once per clock. This gives a range from 32 Hz (`FREQ_REG = 0`) up to 2.097 MHz (`FREQ_REG = 65535`).
 
-The `CLK_DIV` value (0-31) is mapped to a specific bit of the system's 32-bit divider counter (DIV0-DIV3). The hardware uses a 32-entry lookup table to determine which divider bit to use:
+The audible result depends on the LFSR mode:
 
-| CLK_DIV Range | Mapped to DIV Bits | Frequency Range | Purpose                           |
-| :------------ | :----------------- | :-------------- | :-------------------------------- |
-| 0-15          | 10-25              | 8192 - 256 Hz   | Hi-hats, snares, kicks (linear)   |
-| 16-23         | 26-33              | 128 - 16 Hz     | Bass rumble, thunder (linear)     |
-| 24-27         | 34-37              | 8 - 1 Hz        | Deep rumble, earthquake           |
-| 28-31         | 38-41              | < 1 Hz          | Ultra-low special effects         |
+- **15-bit mode (white noise):** The sequence is 32,767 steps long, so there is no perceivable pitch. The clock rate controls the "color" of the noise: a faster clock sounds brighter and hissier (hi-hats, cymbals), a slower clock sounds darker and more rumbling (kicks, thunder). Clock rates above the 32,768 Hz mixer sample rate all sound like full-bandwidth white noise.
+- **7-bit mode (metallic):** The sequence repeats every 127 steps, so the output has a definite fundamental pitch of `LFSR Clock Rate / 127`. This makes the 7-bit mode usable as a tuned, metallic-sounding melodic voice:
 
-**Frequency Calculation:**
+  **`Output Pitch (Hz) = 2,097,152 / (127 × (65536 - FREQ_REG))`**
 
-Once the divider bit is selected from the lookup table, the LFSR clock rate is determined by:
+**Example Calculation (7-bit mode, A-4 = 440 Hz):**
 
-**`LFSR Clock Rate (Hz) = 2,097,152 / (2^(selected_bit + 1))`**
+1.  `440 = 2,097,152 / (127 * (65536 - FREQ_REG))`
+2.  `65536 - FREQ_REG = 2,097,152 / (127 * 440) = 37.53`
+3.  `FREQ_REG = 65536 - 38 = 65498` (rounding to the nearest integer)
 
-This non-linear approach provides:
-- **Fine control** in the 256 Hz - 8 kHz range (16 steps) for precise percussion tuning
-- **Good control** in the 16 Hz - 256 Hz range (8 steps) for rumble and bass effects
-- **Extended range** below 16 Hz (8 steps) for special low-frequency effects
-
-A lower `CLK_DIV` value results in a higher-pitched, "brighter" noise, while a higher `CLK_DIV` value results in a lower-pitched, "rumbling" noise.
+A value of **65498** produces a metallic tone close to 440 Hz. Because the 7-bit sequence divides the clock by 127 rather than by a power of two, the pulse and wave channels' note values do **not** produce the same notes on Channel 3; a separate noise note table or conversion routine is required. The System Library's standard note table is for the pulse and wave channels only.
 
 ### 5.3. Noise Channel Registers
 
@@ -234,7 +236,11 @@ A lower `CLK_DIV` value results in a higher-pitched, "brighter" noise, while a h
 | 7   | KEY_ON    | 1 = Note On (Attack->Decay->Sustain). 0 = Note Off (Release). The channel is active when this bit is 1. |
 | 6   | LFSR_MODE | 0: 15-bit LFSR (White noise), 1: 7-bit LFSR (Metallic noise).                                           |
 | 5   | RETRIGGER | Restart ADSR attack phase. Automatically clears to 0 after triggering. See section 6 for details.       |
-| 4-0 | CLK_DIV   | Clock divider for the LFSR (0-31), controls the base pitch of the noise. See section 5.2 for mapping.   |
+| 4-0 | -         | Unused.                                                                                                 |
+
+#### **F096-F097: CH3_FREQ**
+
+This 16-bit register controls the LFSR clock rate for Channel 3. See section 5.2 for the formula.
 
 ## **6. ADSR Volume Envelopes**
 
@@ -312,7 +318,7 @@ Each channel has a pair of registers to control its ADSR envelope: `CH0_ADSR` (F
 
 After the ADSR envelope shapes each channel's volume, the mixer and output control registers determine how channels are combined, panned, and sent to the left and right speakers.
 
-#### **F096: MIX_CTRL (Mixer Control)**
+#### **F099: MIX_CTRL (Mixer Control)**
 
 This register enables or disables the APU and individual channels.
 
@@ -329,7 +335,7 @@ This register enables or disables the APU and individual channels.
 - Disabling a channel via `CHx_ENABLE` mutes it but doesn't stop its internal oscillators or ADSR envelopes.
 - Disabling `APU_ENABLE` mutes all audio output regardless of individual channel enable states.
 
-#### **F097: MIX_VOL (Master Volume)**
+#### **F09A: MIX_VOL (Master Volume)**
 
 This register controls the global volume for both the left and right stereo outputs.
 
@@ -348,16 +354,16 @@ This register controls the global volume for both the left and right stereo outp
 - Setting both to 0 effectively mutes all audio output.
 - Asymmetric values (e.g., VOL_L=15, VOL_R=8) can create stereo balance effects.
 
-#### **F099-F09C: CHx_OUT (Channel Output Control)**
+#### **F09B-F09E: CHx_OUT (Channel Output Control)**
 
 Each channel has its own output control register that determines its volume and stereo panning. These registers allow independent control of how each channel appears in the left and right speakers.
 
 | Address | Register | Channel        |
 | :------ | :------- | :------------- |
-| F099    | CH0_OUT  | Pulse A output |
-| F09A    | CH1_OUT  | Pulse B output |
-| F09B    | CH2_OUT  | Wave output    |
-| F09C    | CH3_OUT  | Noise output   |
+| F09B    | CH0_OUT  | Pulse A output |
+| F09C    | CH1_OUT  | Pulse B output |
+| F09D    | CH2_OUT  | Wave output    |
+| F09E    | CH3_OUT  | Noise output   |
 
 **Register Format (applies to all CHx_OUT registers):**
 
@@ -406,7 +412,7 @@ The DSP operates on the final mixed audio signal just before it is sent to the s
 1.  **Input Mix:** The audio from any channel with its corresponding `CHx_IN` bit set in `DSP_CTRL` is summed together. This becomes the "dry" input signal for the DSP.
 2.  **Delay Line:** The dry signal is written to a circular buffer in the **Delay Buffer RAM** (`F600-F9FF`). A "read head" retrieves a sample from an earlier point in the buffer. The distance between the read and write heads is the delay time.
 3.  **Feedback:** A portion of the retrieved (delayed) signal, scaled by the `DSP_FBACK` register, is added back into the dry input signal before it's written to the delay buffer. This creates repeating, decaying echoes.
-4.  **Final Mix:** The retrieved (delayed) signal is scaled by the `DSP_WET` register and added to the original, unprocessed dry signal. This final mix is what is sent to the main stereo panning and volume controls.
+4.  **Final Mix:** The retrieved (delayed) signal is scaled by the `DSP_WET` register and added equally to both the left and right channel mixes. This happens after per-channel panning (`CHx_OUT`) has been applied but before the master volume (`MIX_VOL`), so the echo is always centered in the stereo field. See section 8.2 for the full order of operations.
 
 ### 7.2. Delay Buffer and Timing
 
@@ -419,7 +425,7 @@ The DSP operates on the final mixed audio signal just before it is sent to the s
 
 ### 7.3. DSP Registers
 
-#### **F09D: DSP_CTRL**
+#### **F09F: DSP_CTRL**
 
 | Bit | Name   | Description                                          |
 | :-- | :----- | :--------------------------------------------------- |
@@ -430,11 +436,11 @@ The DSP operates on the final mixed audio signal just before it is sent to the s
 | 1   | CH1_IN | 1: Send Channel 1's output into the DSP echo buffer. |
 | 0   | CH0_IN | 1: Send Channel 0's output into the DSP echo buffer. |
 
-#### **F09E: DSP_DELAY**
+#### **F0A0: DSP_DELAY**
 
 An 8-bit register that controls the delay time by setting the read offset into the delay buffer. The delay is `(value + 1) * 4` samples.
 
-#### **F09F: DSP_FBACK**
+#### **F0A1: DSP_FBACK**
 
 A 4-bit value (0-15) that controls the feedback level (how much of the delayed signal is mixed back into the delay line input).
 
@@ -442,7 +448,7 @@ A 4-bit value (0-15) that controls the feedback level (how much of the delayed s
 - `15`: Maximum feedback, creating long, repeating echoes.
 - **Formula:** `Feedback = DelayedSample * (DSP_FBACK / 16)`
 
-#### **F0A0: DSP_WET**
+#### **F0A2: DSP_WET**
 
 A 4-bit value (0-15) that controls the wet/dry mix. This is the volume of the delayed signal in the final output.
 
@@ -459,7 +465,7 @@ This section provides a detailed, step-by-step overview of the entire APU signal
 The APU uses several different clocks, all derived from the master APU clock, to control different aspects of sound generation.
 
 - **Master APU Clock (2.097152 MHz):** The high-speed master clock that drives all APU operations. Its frequency is exactly one-eighth of the main system clock (16.777216 MHz / 8). It is divided down to create the other, slower clocks.
-- **Generator Clocks (Variable):** This is the clock that drives the core sound generators (the pulse wave, wave table, and LFSR). Its speed is controlled by the `FREQ` or `CLK_DIV` registers for each channel and determines the fundamental pitch or character of the raw sound.
+- **Generator Clocks (Variable):** This is the clock that drives the core sound generators (the pulse wave, wave table, and LFSR). Its speed is controlled by the `FREQ` register of each channel and determines the fundamental pitch or character of the raw sound.
 - **Envelope Clock (256 Hz):** A slow, fixed-rate clock. 256 times per second, it tells the ADSR unit on each channel whether it should increment or decrement its volume according to its current phase (Attack, Decay, or Release).
 - **Sweep Clock (128 Hz):** A slow, fixed-rate clock. 128 times per second, it tells the sweep unit on Channel 0 to perform its frequency recalculation.
 - **Mixer Sample Rate (32,768 Hz):** This is the "heartbeat" of the entire mixing system. At every one of these 32,768 ticks per second, the APU performs the full mixing process described below.
@@ -499,7 +505,7 @@ This is where the `CHx_OUT` registers are used. The APU calculates the final mix
 For each of the four channels:
 
 1.  It takes the channel's "pre-mix" output from Step 1.
-2.  It looks at the channel's `CHx_OUT` register (`F099` - `F09C`).
+2.  It looks at the channel's `CHx_OUT` register (`F09B` - `F09E`).
 3.  The pre-mix signal is scaled by the `VOL_L` nibble (0-15) and added to the `FinalLeft` accumulator.
 4.  The pre-mix signal is scaled by the `VOL_R` nibble (0-15) and added to the `FinalRight` accumulator.
 
@@ -516,8 +522,8 @@ The "wet" signal (the echo read from the delay buffer in Step 3) is now added to
 
 This is the final stage before the sound is sent to the speakers.
 
-- The `FinalLeft` signal is scaled by the master left volume (`MIX_VOL.VOL_L`, bits 7-4 of register F097).
-- The `FinalRight` signal is scaled by the master right volume (`MIX_VOL.VOL_R`, bits 3-0 of register F097).
+- The `FinalLeft` signal is scaled by the master left volume (`MIX_VOL.VOL_L`, bits 7-4 of register F09A).
+- The `FinalRight` signal is scaled by the master right volume (`MIX_VOL.VOL_R`, bits 3-0 of register F09A).
 - These two resulting values are the final samples sent to the digital-to-analog converter (DAC).
 
 ---

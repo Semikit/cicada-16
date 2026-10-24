@@ -31,14 +31,14 @@ The console contains a small, internal **Boot ROM** that is separate from the ma
 
 ### **2. Boot Mode Interrupts**
 
-During the boot sequence, the CPU operates in a special "Boot Mode" for interrupts. The CPU is hardwired to use a private **Internal Interrupt Vector Table** located at the end of the Boot ROM (`0x3FE0-0x3FFF`). This table points to Interrupt Service Routines (ISRs) also contained within the Boot ROM. This allows the Boot ROM to use V-Blank and H-Blank interrupts to perform animated startup sequences without interfering with the game's own interrupt system. See the **`Interrupts.md`** document for full details on the vector table layout and interrupt process.
+During the boot sequence, the CPU operates in a special "Boot Mode" for interrupts. The CPU is hardwired to use a private **Internal Interrupt Vector Table** located at the end of the Boot ROM (`0x3FE0-0x3FFF`). This table points to Interrupt Service Routines (ISRs) also contained within the Boot ROM. This allows the Boot ROM to use V-Blank and H-Blank interrupts to perform animated startup sequences without interfering with the game's own interrupt system. If the Reset button is pressed while the Boot ROM is running, the RESET vector in this internal table is used and the boot sequence restarts from the beginning. After handover, RESET goes through the game's own vector table and does not re-enter the Boot ROM (see `Interrupts.md` section 5). See the **`Interrupts.md`** document for full details on the vector table layout and interrupt process.
 
 ### **3. The Boot Sequence**
 
 The code on the Boot ROM executes the following steps in order:
 
 1. **Hardware Initialization**: From power-on, the Boot ROM performs the following setup sequence:
-   - **Initialize CPU registers** `R0`-`R7` and `0x0000`.
+   - **Initialize CPU registers** `R0`-`R6` to `0x0000` and the stack pointer `R7` to `0xD000` (the top of the stack region, `C000-CFFF`).
    - **Disable interrupts** using the `DI` instruction.
    - **Disable the PPU** by clearing the `LCDC` register, blanking the screen.
    - **Mute the APU** by disabling all sound channels.

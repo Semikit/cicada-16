@@ -23,7 +23,7 @@ Every Cicada-16 cartridge must begin with a header. The console's internal boot 
 | 0x0014-0x0023 | 16B  | **Developer**           | A null-terminated ASCII string for the developer or publisher.                                                                    |
 | 0x0024        | 1B   | **Game Version**        | A single byte representing the game's version number (e.g., 0x00 for v1.0).                                                       |
 | 0x0025        | 1B   | **ROM Size**            | An enum indicating the total size of the physical ROM chip (e.g., 0x00=32KiB, 0x01=64KiB).                                        |
-| 0x0026        | 1B   | **RAM Size**            | An enum indicating the size of save RAM on the cartridge. 0x00 = No RAM.                                                          |
+| 0x0026        | 1B   | **RAM Size**            | An enum indicating the size of save RAM on the cartridge. 0x00 = No RAM (the `8000-8FFF` window is then permanently write-protected; see `WE_LATCH` in `IO_Peripherals.md`).                                                          |
 | 0x0027        | 1B   | **Cartridge Info**      | A bitfield for hardware revision and region. See table below.                                                                     |
 | 0x0028        | 1B   | **Feature Flags**       | A bitfield for hardware features. See the table below for the bit mapping.                                                        |
 | 0x0029        | 1B   | **Header Checksum**     | An 8-bit checksum of bytes 0x0000 to 0x0028. Used by the boot ROM to verify header integrity.                                     |

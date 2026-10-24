@@ -6,8 +6,8 @@
 
 - **Registers (rrr, sss, ddd):** A 3-bit value (0-7) represents one of the 8 general-purpose registers (R0-R7).
 - **Accumulator:** R0 is the implicit destination for most register-to-register arithmetic.
-- **Prefixes:** The `0xFD` (Advanced Addressing 1), `0xFE` (Bit, Byte, and Shift), and `0xFF` (Advanced Addressing 2) prefixes access secondary instruction maps.
-- **Instruction Timing:** The cycle counts listed for instructions in the ISA document assume standard WRAM access times. Instructions that access HRAM (`FE00-FFFF`) will be faster.
+- **Prefixes:** The `0xFD` (Bit, Byte, and Shift), `0xFE` (Advanced Addressing 1), and `0xFF` (Advanced Addressing 2) prefixes access secondary instruction maps.
+- **Instruction Timing:** Instructions that access memory list two cycle counts in the form `HRAM/Other`. HRAM (`FE00-FFFF`) has no wait states; every other region, including cartridge ROM, uses the slower timing.
 
 ---
 
@@ -26,7 +26,7 @@ All conditional instructions (Jcc, JRcc, CALLcc) use the same encoding for the c
 | 6        | Z (zero)          |
 | 7        | NZ (not zero)     |
 
-ex) opcode 0x63 => Jump Zero (0x63 = 0x5D + **6**, cc = 6)
+ex) opcode 0x61 => Jump Zero (0x61 = 0x5B + **6**, cc = 6)
 
 ---
 
@@ -77,7 +77,7 @@ For instructions with memory access, cycle counts may be presented as `HRAM/WRAM
 | 15              | CMP rd, rs     | 2     | 8 (8 : 0)        | `(2 bytes) => 0x15 b'00dddsss`. Compares rd with rs.                                                     |
 | 16              | ADC rd, rs     | 2     | 8 (8 : 0)        | `(2 bytes) => 0x16 b'00dddsss`. rd = rd + rs + C.                                                        |
 | 17              | SBC rd, rs     | 2     | 8 (8 : 0)        | `(2 bytes) => 0x17 b'00dddsss`. rd = rd - rs - C.                                                        |
-| **<- 18-50 ->** | **-------**    | -     | **-------**      | **---16-bit Accumulator (R0) Arithmetic---**                                                             |
+| **<- 18-4A ->** | **-------**    | -     | **-------**      | **---16-bit Accumulator (R0) Arithmetic---**                                                             |
 | 18-1F           | ADD rs         | 1     | 4 (4 : 0)        | `(1 byte) => 0x18+rs`. R0 = R0 + rs.                                                                     |
 | 20-27           | SUB rs         | 1     | 4 (4 : 0)        | `(1 byte) => 0x20+rs`. R0 = R0 - rs.                                                                     |
 | 28-2F           | AND rs         | 1     | 4 (4 : 0)        | `(1 byte) => 0x28+rs`. R0 = R0 & rs.                                                                     |
@@ -93,21 +93,21 @@ For instructions with memory access, cycle counts may be presented as `HRAM/WRAM
 | 4D              | RCF            | 1     | 4 (4 : 0)        | Reset carry flag to 0. N flag is reset.                                                                  |
 | **<- 4E ->**    | **-------**    | -     | **-------**      | **---System Library Call---**                                                                            |
 | 4E              | SYSCALL n8     | 2     | 24 (8 : 16)      | `(2 bytes) => 0x4E n8`. Call system routine at index n8.                                                 |
-| **<- 50-51 ->** | **-------**    | -     | **-------**      | **---Enter/Leave---**                                                                                    |
+| **<- 4F-50 ->** | **-------**    | -     | **-------**      | **---Enter/Leave---**                                                                                    |
 | 4F              | ENTER          | 1     | 12 (4 : 8)       | Enter a function, See [CPU_ISA.md](./CPU_ISA.md) for details.                                            |
 | 50              | LEAVE          | 1     | 12 (4 : 8)       | Leave a function, See [CPU_ISA.md](./CPU_ISA.md) for details.                                            |
-| **<- 52-6C ->** | **-------**    | -     | **-------**      | **---Control Flow---**                                                                                   |
+| **<- 51-6B ->** | **-------**    | -     | **-------**      | **---Control Flow---**                                                                                   |
 | 51              | JMP n16        | 3     | 12 (12 : 0)      | `(3 bytes) => 0x51 addr_lo addr_hi`.                                                                     |
 | 52-59           | JMP (r)        | 1     | 4 (4 : 0)        | `(1 byte) => 0x52+r`. Jump to address in register r.                                                     |
 | 5A              | JR n8s         | 2     | 8 (8 : 0)        | `(2 bytes) => 0x5A offset`. Relative jump by signed 8-bit signed offset.                                 |
 | 5B-62           | Jcc n16        | 3     | 12 (12 : 0)      | `(3 bytes) => 0x5B+cc addr_lo addr_hi`. Conditional jump.                                                |
 | 63-6A           | JRcc n8s       | 2     | 8 (8 : 0)        | `(2 bytes) => 0x63+cc offset`. Conditional relative jump.                                                |
 | 6B              | DJNZ n8s       | 2     | 8 (8 : 0)        | `(2 bytes) => 0x6B offset`. Decrement R5 and jump to relative address if not zero.                       |
-| **<- 6D-7F ->** | **-------**    | -     | **-------**      | **---Stack Operations---**                                                                               |
+| **<- 6C-7F ->** | **-------**    | -     | **-------**      | **---Stack Operations---**                                                                               |
 | 6C              | ADD SP, n8s    | 2     | 8 (8 : 0)        | `(2 bytes) => 0x6C n8s`. SP = SP + n8s. Stack pointer immediate arithmetic.                              |
 | 6D-74           | PUSH r         | 1     | 12 (4 : 8)       | `(1 byte) => 0x6D+r`. Push r onto stack.                                                                 |
 | 75-7C           | POP r          | 1     | 12 (4 : 8)       | `(1 byte) => 0x75+r`. Pop from stack into r.                                                             |
-| 7D              | PUSH n16       | 3     | 20 (12 : 8)      | `(1 byte) => 0x7D n16_lo n16_hi`. Push immediate value onto stack.                                       |
+| 7D              | PUSH n16       | 3     | 20 (12 : 8)      | `(3 bytes) => 0x7D n16_lo n16_hi`. Push immediate value onto stack.                                      |
 | 7E              | PUSH F         | 1     | 12 (4 : 8)       | Push Flags register onto stack.                                                                          |
 | 7F              | POP F          | 1     | 12 (4 : 8)       | Pop Flags register from stack.                                                                           |
 | **<- 80-BF ->** | **-------**    | -     | **-------**      | **---Register-to-Register Load---**                                                                      |
@@ -132,7 +132,7 @@ For instructions with memory access, cycle counts may be presented as `HRAM/WRAM
 | F1-F8           | ST (n16), r    | 3     | 16/20 (12 : 4/8) | `(3 bytes) => 0xF1+r addr_lo addr_hi`. Store r to absolute address.                                      |
 | **<- F9-FF ->** | **-------**    | -     | **-------**      | **---Misc Control & Prefixes---**                                                                        |
 | F9              | RET            | 1     | 12 (4 : 8)       | Return from subroutine.                                                                                  |
-| FA              | RETI           | 1     | 12 (4 : 8)       | Return from interrupt.                                                                                   |
+| FA              | RETI           | 1     | 20 (4 : 16)      | Return from interrupt.                                                                                   |
 | FB              | EI             | 1     | 4 (4 : 0)        | Enable Interrupts.                                                                                       |
 | FC              | DI             | 1     | 4 (4 : 0)        | Disable Interrupts.                                                                                      |
 | FD              | PREFIX         | 1+    | 4 (4 : 0)        | Bit, Byte, and Shift Operations. See below.                                                              |
@@ -162,9 +162,9 @@ For instructions with memory access, cycle counts may be presented as `HRAM/WRAM
 | 70-77        | BIT (n16), b | 4     | 18/20 (16 : 2/4)  | `(4 bytes) => 0xFD 0x70+b n16_lo n16_hi`. Test bit b of byte at address n16.    |
 | 78-7F        | SET (n16), b | 4     | 20/24 (16 : 4/8)  | `(4 bytes) => 0xFD 0x78+b n16_lo n16_hi`. Set bit b of byte at address n16.     |
 | 80-87        | RES (n16), b | 4     | 20/24 (16 : 4/8)  | `(4 bytes) => 0xFD 0x80+b n16_lo n16_hi`. Reset bit b of byte at address n16.   |
-| 88-8F        | BIT (rs), b  | 3     | 16/20 (12 : 4/8)  | `(3 bytes) => 0xFD 0x88+b rs`. Test bit b of byte at address in rs.             |
-| 90-97        | SET (rs), b  | 3     | 20/28 (12 : 8/16) | `(3 bytes) => 0xFD 0x90+b rs`. Set bit b of byte at address in rs.              |
-| 98-9F        | RES (rs), b  | 3     | 20/28 (12 : 8/16) | `(3 bytes) => 0xFD 0x98+b rs`. Reset bit b of byte at address in rs.            |
+| 88-8F        | BIT (rs), b  | 3     | 14/16 (12 : 2/4)  | `(3 bytes) => 0xFD 0x88+b rs`. Test bit b of byte at address in rs.             |
+| 90-97        | SET (rs), b  | 3     | 16/20 (12 : 4/8)  | `(3 bytes) => 0xFD 0x90+b rs`. Set bit b of byte at address in rs.              |
+| 98-9F        | RES (rs), b  | 3     | 16/20 (12 : 4/8)  | `(3 bytes) => 0xFD 0x98+b rs`. Reset bit b of byte at address in rs.            |
 | A0-A7        | LDI.b rd, n8 | 3     | 12 (12 : 0)       | `(3 bytes) => 0xFD 0xA0+rd n8`. Load low byte of rd with immediate 8-bit value. |
 | A8-AF        | DEC r        | 2     | 8 (8 : 0)         | `(2 byte) => 0xFD 0xA8+r`. Decrement r.                                         |
 | B0-B7        | INC r        | 2     | 8 (8 : 0)         | `(2 byte) => 0xFD 0xB0+r`. Increment r.                                         |

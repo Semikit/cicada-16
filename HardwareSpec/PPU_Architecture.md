@@ -9,11 +9,20 @@ This document describes the design of the Picture Processing Unit (PPU) for the 
 
 ### **1.1. Memory Access Conflicts**
 
-Accessing OAM/VRAM/CRAM (reading or writing) by the CPU is generally safe during V-Blank and H-Blank periods. However, if the CPU attempts to write to OAM/VRAM/CRAM while the PPU is in **Mode 2 (OAM Scan)** or **Mode 3 (Drawing Pixels)**, the write will still occur, but the PPU may read corrupted or inconsistent data for the current frame, leading to **graphical glitches** on the screen. This behavior is intentional and requires developers to synchronize OAM updates with the PPU's rendering cycle.
+VRAM, OAM, and CRAM are shared between the CPU and the PPU. The hardware never locks the CPU out: **reads always return correct data** and **writes always succeed**, in every PPU mode. The PPU does not buffer these memories, so a write that lands while the PPU is reading the same memory may be observed mid-render and produce a **visual glitch on the current scanline**. Which writes are risky depends on what the PPU is reading in each mode:
+
+| Mode                   | PPU reads                         | Writes that may glitch | Reads |
+| :--------------------- | :-------------------------------- | :--------------------- | :---- |
+| **2 (OAM Scan)**       | OAM                               | OAM                    | Safe  |
+| **3 (Drawing Pixels)** | VRAM, CRAM, internal sprite list  | VRAM, CRAM             | Safe  |
+| **0 (H-Blank)**        | Nothing                           | None                   | Safe  |
+| **1 (V-Blank)**        | Nothing                           | None                   | Safe  |
+
+During Mode 3 the PPU draws sprites from the internal list built during Mode 2 (see section 10.1), so a write to OAM during Mode 3 does not affect the current scanline. This behavior is intentional and requires developers to synchronize OAM updates with Mode 0 or Mode 1, and VRAM/CRAM updates with Mode 0, Mode 1, or Mode 2. The DMA controller's `VRAM_SAFE` bit (see `DMA_Controller.md`) can defer a transfer until Mode 0 or Mode 1 automatically.
 
 - **CRAM (Color RAM / Palette RAM):** 512 bytes of RAM located at `F200-F3FF` in the main memory map. It holds the 256 16-bit color palette entries.
 - **Screen Resolution:** 240x160 pixels.
-- **Refresh Rate:** ~59.739 Hz.
+- **Refresh Rate:** ~59.748 Hz.
 
 ## **2. Color System**
 
@@ -146,7 +155,7 @@ The PPU can render up to **64** sprites on screen at once.
   - **Byte 0:** Y-Position (vertical screen coordinate)
   - **Byte 1:** X-Position (horizontal screen coordinate)
   - **Byte 2:** **Size & Shape attribute** - Defines the sprite's dimensions (e.g., 8x8, 16x16, 8x16, 16x8).
-  - **Byte 3:** Tile Index (which 8x8 tile from VRAM to use)
+  - **Byte 3:** Tile Index (which 8x8 tile from VRAM to use). This is an 8-bit field, so sprites can only reference tiles 0-255 (the first 8 KiB of the tile graphics area).
   - **Byte 4:** Attribute Flags, defined below.
   - **Bytes 5-7:** Reserved for future use (e.g., rotation/scaling data).
 
@@ -226,7 +235,7 @@ These registers, mapped to the CPU's address space, control the PPU's operation.
 
 ### **7.1. Accessing Color RAM (CRAM)**
 
-Since CRAM is mapped directly to the CPU's address space (`F200-F3FF`), there are no registers for indirect access. This allows for very fast reads and writes. However, to prevent visual artifacts caused by modifying palette data while the PPU is actively drawing, all CPU writes to this memory region should be performed **only during non-rendering periods (V-Blank or H-Blank)**. Reading from CRAM is safe at any time.
+Since CRAM is mapped directly to the CPU's address space (`F200-F3FF`), there are no registers for indirect access. This allows for very fast reads and writes. However, to prevent visual artifacts caused by modifying palette data while the PPU is actively drawing, all CPU writes to this memory region should be performed **outside Mode 3 (Drawing Pixels)**, ideally during V-Blank or H-Blank. Reading from CRAM is safe at any time and always returns correct data. See section 1.1.
 
 ### **7.2. Configuring Tilemap Base Addresses**
 
@@ -329,9 +338,11 @@ This 8-bit register provides information about the PPU's current state and allow
 | **2**   | LYC_FLAG    | **(Read-only)** 1 if LY == LYC. 0 otherwise.                                                                                  |
 | **1-0** | MODE_FLAG   | **(Read-only)** Indicates the PPU's current mode: <br> 00: H-Blank <br> 01: V-Blank <br> 10: OAM Scan <br> 11: Drawing Pixels |
 
+The `LYC_INT_EN`, `VBLK_INT_EN`, and `HBLK_INT_EN` bits control whether the PPU sets the corresponding flag in the `IF` register (`F021`) when the event occurs. The matching bit in the `IE` register must also be set for the CPU to service the interrupt. See `Interrupts.md`.
+
 ## **10. PPU Frame Rendering Cycle**
 
-The PPU renders the 240x160 screen one horizontal line (or scanline) at a time. The entire process is driven by a master clock and is meticulously timed. A full frame consists of 216 scanlines (LY 0-215) and takes 280,800 CPU cycles to complete, resulting in a refresh rate of approximately 59.739 Hz.
+The PPU renders the 240x160 screen one horizontal line (or scanline) at a time. The entire process is driven by a master clock and is meticulously timed. A full frame consists of 216 scanlines (LY 0-215) and takes 280,800 CPU cycles to complete, resulting in a refresh rate of approximately 59.748 Hz.
 
 The rendering process is divided into two main phases: the period when pixels are drawn to the screen, and the Vertical Blank (V-Blank) period, which is the idle time between frames.
 
@@ -346,13 +357,13 @@ At the beginning of a scanline, the PPU determines which sprites need to be draw
 - **Action:** The PPU iterates through all 64 sprite entries in OAM (Object Attribute Memory, `F400-F5FF`).
 - **Condition:** It checks if the current scanline (`LY` register) falls within the vertical range of each sprite (i.e., `sprite.y <= LY < sprite.y + sprite.height`).
 - **Result:** The PPU builds a temporary internal list of up to 16 sprites that are visible on this line. If more than 16 sprites are on the line, the additional ones are ignored for this frame. This list contains the sprite's X-position, tile index, attributes, and OAM index (for priority).
-- **Status:** The `STAT` register's mode flag (bits 1-0) is set to `10`.
+- **Status:** The `STAT` register's mode flag (bits 1-0) is set to `10`. Writing to OAM during this mode can corrupt the sprite list for the current scanline. VRAM and CRAM writes are safe during this mode.
 
 #### **Mode 3: Drawing Pixels (960 Cycles)**
 
 This is the core of the rendering process, where the PPU composes the final color for each of the 240 horizontal pixels on the scanline. It processes one pixel every four CPU cycles.
 
-- **Status:** The `STAT` register mode flag is set to `11`. Accessing VRAM, OAM, or CRAM during this mode can cause visual glitches.
+- **Status:** The `STAT` register mode flag is set to `11`. Writing to VRAM or CRAM during this mode can cause visual glitches on the current scanline. OAM writes are harmless here because sprites are drawn from the internal list built during Mode 2. Reads are always safe.
 - **The Pixel Pipeline:** For each pixel X from 0 to 239, the PPU performs the following logic:
   1.  **Fetch Pixels:** The PPU fetches a single pixel's data (a 4-bit color index) from all relevant layers that are enabled in the `LCDC` register. This includes:
       - **BG0 & BG1:** Based on the scroll registers (`SCX0`, `SCY0`, `SCX1`, `SCY1`) plus the current `LY` and `X` coordinates.
@@ -380,7 +391,7 @@ After all 160 visible scanlines have been drawn, the PPU enters the V-Blank peri
 
 - **Action:** The PPU is completely idle and does no drawing. This is the main safe period for the CPU to perform lengthy graphics updates, such as updating tilemaps, copying new tile graphics to VRAM, or updating palettes in CRAM.
 - **Status:** As soon as `LY` becomes 160, the `STAT` register mode flag is set to `01`.
-- **V-Blank Interrupt:** The PPU sets the V-Blank flag in the `IF` register (`F021`, Bit 0). This is the most important interrupt in the system, as it signals to the game that it is time to prepare all the data for the next frame.
+- **V-Blank Interrupt:** If `VBLK_INT_EN` is set in `STAT`, the PPU sets the V-Blank flag in the `IF` register (`F021`, Bit 0). This is the most important interrupt in the system, as it signals to the game that it is time to prepare all the data for the next frame.
 
 After the V-Blank period ends, the `LY` register wraps back to 0, and the entire frame rendering process begins again.
 

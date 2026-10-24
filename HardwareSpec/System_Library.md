@@ -4,7 +4,7 @@ This document describes the architecture of the permanent System Library, which 
 
 These functions are copied from the internal Boot ROM to the System Library RAM by the boot process and are available for any game to use. They provide standardized, optimized routines for common tasks. After the boot sequence completes, this memory region is made read-only to protect the library's integrity.
 
-For detailed documentation of each function and data block, see [ProgrammingDocs/System_Library_Reference.md](../ProgrammingDocs/System_Library_Reference.md).
+For detailed documentation of each function and data block, see [ProgrammingDocs/SystemLibrary.md](../ProgrammingDocs/SystemLibrary.md).
 
 ## **System Call Vector Table**
 
@@ -12,26 +12,20 @@ To provide a stable and future-proof API, all System Library functions and data 
 
 - **Size**: The table has 128 entries, each being a 16-bit pointer. This provides a total of 128 unique system calls.
 - **Memory Footprint**: 128 entries \* 2 bytes/entry = 256 bytes (`E000-E0FF`).
-- **Function**: Each entry in the table holds the absolute 16-bit address of a specific system function or data block. To call a function, a developer uses its official vector number (e.g., `SYSCALL_DECOMPRESS_RLE`) to look up the address in the table and then performs an indirect call.
+- **Function**: Each entry in the table holds the absolute 16-bit address of a specific system function or data block. To call a function, a developer executes `SYSCALL n8` with the function's official vector number; the CPU reads the address from the table and transfers control to it. System Library functions end with `RETI`, so they must be called with `SYSCALL` rather than `CALL` (see `CPU_ISA.md`). Data block entries are read with an ordinary `LD r, (n16)` from `E000 + vector * 2`.
 - **Data Blocks**: For library data blocks (such as the Default Font, Note Frequency Table, Default Waveforms, and Percussion Presets), the vector table contains a single entry that points to the beginning address of the respective data block.
 
 This vector table approach ensures that even if the internal layout of the System Library changes in future hardware revisions, the vector numbers for existing functions will remain the same, maintaining backward compatibility for all software.
 
-**Example Usage (Conceptual):**
+**Example Usage:**
 
 ```assembly
-; Assume R0 points to the start of the vector table (E000)
-; Assume the vector number for 'fastMultiply16' is 0x2A
+; Call 'fastMultiply16' (vector number 0x09).
+; Arguments are passed in registers as documented in ProgrammingDocs/SystemLibrary.md.
+SYSCALL 0x09
 
-; Calculate the address of the vector entry
-LDI R1, 0x2A * 2 ; Vector number * 2 bytes per entry
-ADD R0, R1       ; R0 now points to the correct entry in the table
-
-; Load the function's actual address from the vector table
-LD.w R0, (R0)
-
-; Call the function
-CALL (R0)
+; Read the address of a data block (the Note Frequency Table, vector number 0x02).
+LD R0, (0xE004)  ; E000 + 0x02 * 2
 ```
 
 ## **Memory Layout and Budget**
@@ -45,8 +39,8 @@ The 4 KiB (4096 bytes) of System Library RAM is allocated as follows:
 | **Sine Wave Table**        | 256          | `E400-E4FF`             | 256 samples for wave synthesis        |
 | **Note Frequency Table**   | 120          | `E500-E577`             | 5 octaves _ 12 notes _ 2 bytes each   |
 | **Default APU Waves**      | 128          | `E578-E5F7`             | 4 waveforms \* 32 bytes each          |
-| **APU Percussion Presets** | 24           | `E5F8-E610`             | ADSR/timing for drum sounds           |
-| **(Function Code)**        | 2544         | `E611-EFFF`             | Remaining space for library functions |
+| **APU Percussion Presets** | 24           | `E5F8-E60F`             | ADSR/timing for drum sounds           |
+| **(Function Code)**        | 2544         | `E610-EFFF`             | Remaining space for library functions |
 | **Total**                  | **4096**     | `E000-EFFF`             |                                       |
 
 ## **Vector Table Index Map**

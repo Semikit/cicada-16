@@ -29,7 +29,7 @@ The `CONNECTED` bit is set to 1 by the hardware whenever the console's Serial In
 To allow for efficient, event-driven handling of connection events, a dedicated interrupt is provided.
 
 - **Interrupt:** Link Status Interrupt
-- **IE/IF Bit:** 5
+- **IE/IF Bit:** 6
 - **Trigger:** This interrupt is requested by the hardware whenever the `CONNECTED` status bit in the `SC` register changes its state (from 0 to 1, or from 1 to 0).
 
 This allows the game's CPU to ignore the connection status until the hardware interrupts it, at which point an interrupt service routine can run to handle the "Connected" or "Disconnected" event immediately.

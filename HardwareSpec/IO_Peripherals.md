@@ -15,7 +15,7 @@ This document provides comprehensive documentation for all I/O peripherals and t
 | F006    | **JOYP**       | **Joypad: read buttons, write column select**                             |
 | F007    | **TIMA0**      | **Timer 0: 8-bit timer counter (IRQ on overflow → IF.TMR)**               |
 | F008    | **TMA0**       | **Timer 0: 8-bit timer modulo (reload value on overflow)**                |
-| F009    | **TAC0**       | **Timer 0 control: bit2=EN, bits1..0=clock sel**                          |
+| F009    | **TAC0**       | **Timer 0 control: bit5=EN, bits4..0=clock sel**                          |
 | F00A    | **DMA_SRC_L**  | **DMA source address low**                                                |
 | F00B    | **DMA_SRC_H**  | **DMA source address high**                                               |
 | F00C    | **DMA_DST_L**  | **DMA destination low**                                                   |
@@ -25,7 +25,7 @@ This document provides comprehensive documentation for all I/O peripherals and t
 | F010    | **DMA_CTL**    | **DMA control: bits5-3=MODE, bit2=VRAM_SAFE, bit1=ADDR_MODE, bit0=START** |
 | F011    | **MPR_BANK**   | **ROM bank select for 4000-7FFF window**                                  |
 | F012    | **RAM_BANK**   | **Bank select for banked Cart RAM (if enabled)**                          |
-| F013    | **WE_LATCH**   | Write-enable latch for save RAM (write key)                               |
+| F013    | **WE_LATCH**   | **Cartridge RAM write-enable latch (write 0xA5 to unlock, anything else to lock)** |
 | F014    | **VRAM_BANK**  | **VRAM Bank Select (0-3 for 9000-AFFF window)**                           |
 | F015    | **WRAM_BANK**  | **WRAM Bank Select (0-5 for D000-DFFF window -> maps banks 1-6)**         |
 | F018    | **RTC_SEC**    | **Seconds (0-59)**                                                        |
@@ -44,9 +44,13 @@ This document provides comprehensive documentation for all I/O peripherals and t
 | F025    | **TAC1**       | **Timer 1 control: bit5=EN, bits4..0=clock sel**                          |
 | F026    | **SYS_CFG**    | **System Configuration: boot-time settings (R/W during boot, R after)**   |
 
+## **Reset Button**
+
+The console has a physical Reset button. It is not visible through any I/O register; pressing it raises the non-maskable **RESET** interrupt, which performs a warm reset through the game's RESET vector without re-running the boot ROM or clearing memory. See `Interrupts.md` section 5 for the full behavior.
+
 ## **Divider Registers (DIV0-DIV3)**
 
-The DIV0-DIV3 registers (F004-F007) together form a single, 32-bit, free-running counter that increments on every system clock cycle (T-cycle). This counter is read-only and cannot be stopped or reset by the game software. Writing to these registers has no effect.
+The DIV0-DIV3 registers (F002-F005) together form a single, 32-bit, free-running counter that increments on every system clock cycle (T-cycle). This counter is read-only and cannot be stopped or reset by the game software. Writing to these registers has no effect.
 
 - **DIV0 (F002):** Byte 0 (LSB)
 - **DIV1 (F003):** Byte 1
@@ -87,11 +91,11 @@ The 2-bit value written to GRP_SEL determines which set of physical buttons is m
 
 ### **Reading the Joypad**
 
-1. **Select a Button Group:** Write a value to F000 to set bits 5-4, selecting a group.
+1. **Select a Button Group:** Write a value to F006 to set bits 5-4, selecting a group.
    - To read the D-Pad, write `0x10`.
    - To read the Action Buttons (A, B, X, Y), write `0x20`.
    - To read the Utility Buttons (Start, Select, L, R), write `0x30`.
-2. **Read the Button State:** Read from F000. The lower 4 bits will reflect the state of the selected buttons. For example, if the Action group was selected and the player is pressing **A** and **X**, reading the register will return a value where bits 0 and 2 are 0.
+2. **Read the Button State:** Read from F006. The lower 4 bits will reflect the state of the selected buttons. For example, if the Action group was selected and the player is pressing **A** and **X**, reading the register will return a value where bits 0 and 2 are 0.
 
 ## **Programmable Timers**
 
@@ -234,6 +238,28 @@ To set the time and date, the following sequence must be performed:
 2.  **Time-Locked Events:** A game could unlock special content or characters only on certain dates or at certain times of day.
 3.  **Player Progress Tracking:** The RTC can be used to log when a player last played or to track how much real time has been spent in the game.
 
+## **Cartridge RAM Write-Enable Latch (WE_LATCH)**
+
+Cartridge RAM (the banked window at `8000-8FFF`) is typically battery-backed save memory, so the console protects it with a write-enable latch at **`WE_LATCH` (F013)**. This prevents a runaway program or a stray pointer from silently corrupting a save file, and gives the game a deliberate "I am done saving" moment.
+
+- **Unlock:** Write the key value **`0xA5`** to `WE_LATCH`. Cartridge RAM becomes writable.
+- **Lock:** Write **any other value** to `WE_LATCH`. Cartridge RAM becomes read-only again.
+- **Power-on state:** Locked.
+- **RESET:** The RESET interrupt leaves the latch unchanged.
+- **Reads:** Reading `WE_LATCH` returns `0x01` when unlocked and `0x00` when locked. Reading cartridge RAM always succeeds regardless of the latch.
+- **Locked writes:** Any write to `8000-8FFF` while the latch is locked, by the CPU or by a DMA transfer, is blocked by the MMU and raises a **Protected Memory Fault** (see `Interrupts.md`).
+- **Cartridges without RAM:** If the cartridge header's RAM Size is `0x00`, the window is permanently locked. Writing the key has no effect, and any write to `8000-8FFF` raises a Protected Memory Fault.
+
+The recommended pattern is to unlock immediately before writing save data and lock again immediately after:
+
+```assembly
+LDI.b R0, 0xA5
+ST.b (0xF013), R0    ; unlock cartridge RAM
+; ... write save data to 8000-8FFF ...
+LDI.b R0, 0x00
+ST.b (0xF013), R0    ; lock it again
+```
+
 ## **Cartridge Mapper and Bank Switching**
 
 To support games larger than the CPU's addressable ROM space, the console uses a cartridge-based mapper for bank switching. The mapper hardware resides on the game cartridge and is controlled by writing to I/O registers. The primary register for this is **MPR_BANK** at address F011. The value written to this register directly selects which 16 KiB ROM bank is mapped into the `4000-7FFF` address window.
@@ -265,7 +291,7 @@ After boot, the CPU reads bit 0 (`IVT_MODE`) of `SYS_CFG` to determine where to 
 - **IVT_MODE = 0 (Standard):** The CPU fetches interrupt vectors from the cartridge ROM at `0x0060-0x0079`.
 - **IVT_MODE = 1 (Enhanced):** The CPU fetches interrupt vectors from Work RAM at `0xBFE0-0xBFF9`.
 
-Any attempt to write to `SYS_CFG` after boot will be ignored (the register behaves as read-only).
+Any attempt to write to `SYS_CFG` after boot triggers a **Protected Memory Fault** (see `Interrupts.md`).
 
 ### **Custom Boot ROM Usage**
 

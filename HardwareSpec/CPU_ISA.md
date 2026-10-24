@@ -8,9 +8,9 @@
 
 ### **16-bit General Purpose Registers**
 
-- **R0, R1, R2, R3, R4, R5:** General Purpose Registers - Can be used for data manipulation and as address pointers. For register-to-register arithmetic instructions (ADD, SUB, etc.), R0 serves as the accumulator.
+- **R0, R1, R2, R3, R4, R5:** General Purpose Registers - Can be used for data manipulation and as address pointers. For the 1-byte accumulator arithmetic instructions (`ADD rs`, `SUB rs`, etc.), R0 serves as the implicit accumulator; the 2-byte `ADD rd, rs` forms can target any register.
 - **R6:** General Purpose / Frame Pointer (FP) - Can be used as a general register, but is often used by compilers to manage stack frames.
-- **R7:** Stack Pointer (SP) - Points to the top of the stack in WRAM. PUSH and POP operations implicitly use this register.
+- **R7:** Stack Pointer (SP) - Points to the top of the stack in WRAM. PUSH and POP operations implicitly use this register. The stack region is `C000-CFFF` in WRAM0; SP is initialized to `0xD000` at power-on and grows downward. Decrementing SP below `0xC000` triggers a Stack Overflow fault (see `Interrupts.md`).
 
 ### **Special Purpose 16-bit Registers**
 
@@ -183,11 +183,11 @@ The post-increment and pre-decrement addressing modes are powerful features for 
 | SET r, b     | R0, 7       | 3     | 12     | Set bit b (0-7) of register r's low byte to 1. (Prefixed)                                 |
 | RES r, b     | R0, 7       | 3     | 12     | Reset bit b (0-7) of register r's low byte to 0. (Prefixed)                               |
 | BIT (n16), b | (0xC000), 7 | 4     | 18/20  | Test bit b (0-7) of the byte at memory address n16. Sets Z flag if bit is 0. (Prefixed)   |
-| SET (n16), b | (0xC000), 7 | 4     | 22/24  | Set bit b (0-7) of the byte at memory address n16 to 1. (Prefixed)                        |
-| RES (n16), b | (0xC000), 7 | 4     | 22/24  | Reset bit b (0-7) of the byte at memory address n16 to 0. (Prefixed)                      |
-| BIT (rs), b  | (R0), 15    | 3     | 16/20  | Test bit b (0-7) of the byte at memory address in rs. Sets Z flag if bit is 0. (Prefixed) |
-| SET (rs), b  | (R0), 15    | 3     | 20/28  | Set bit b (0-7) of the byte at memory address in rs to 1. (Prefixed)                      |
-| RES (rs), b  | (R0), 15    | 3     | 20/28  | Reset bit b (0-7) of the byte at memory address in rs to 0. (Prefixed)                    |
+| SET (n16), b | (0xC000), 7 | 4     | 20/24  | Set bit b (0-7) of the byte at memory address n16 to 1. (Prefixed)                        |
+| RES (n16), b | (0xC000), 7 | 4     | 20/24  | Reset bit b (0-7) of the byte at memory address n16 to 0. (Prefixed)                      |
+| BIT (rs), b  | (R0), 7     | 3     | 14/16  | Test bit b (0-7) of the byte at memory address in rs. Sets Z flag if bit is 0. (Prefixed) |
+| SET (rs), b  | (R0), 7     | 3     | 16/20  | Set bit b (0-7) of the byte at memory address in rs to 1. (Prefixed)                      |
+| RES (rs), b  | (R0), 7     | 3     | 16/20  | Reset bit b (0-7) of the byte at memory address in rs to 0. (Prefixed)                    |
 
 ### **Control Flow Instructions (Jumps, Calls, Returns)**
 
@@ -204,7 +204,7 @@ The post-increment and pre-decrement addressing modes are powerful features for 
 | CALLcc n16 | C, 0x2000 | 3     | 12/20  | Conditional call if condition cc is met.                                                                                           |
 | SYSCALL n8 | 0x1A      | 2     | 24     | Calls a system library routine. Pushes PC, then pushes F, then jumps to the address from the system vector table at index n8.      |
 | RET        |           | 1     | 12     | Return from subroutine. Pops PC from stack.                                                                                        |
-| RETI       |           | 1     | 12     | Return from interrupt. Pops flags from the stack, then pops PC from stack and enables interrupts. See `Interrupts.md` for details. |
+| RETI       |           | 1     | 20     | Return from interrupt. Pops flags from the stack, then pops PC from stack and enables interrupts. See `Interrupts.md` for details. |
 | ENTER      |           | 1     | 12     | Creates a new stack frame. See explanation below.                                                                                  |
 | LEAVE      |           | 1     | 12     | Destroys the current stack frame and prepares for return.                                                                          |
 
@@ -225,13 +225,13 @@ The `ENTER` and `LEAVE` instructions simplify the creation and destruction of st
 
 #### **System Calls (SYSCALL)**
 
-The `SYSCALL` instruction provides a standardized way for user programs to request services from the system library or operating system kernel. This is the primary mechanism for interacting with hardware peripherals, managing files, or performing other privileged operations.
+The `SYSCALL` instruction provides a standardized way for programs to call routines in the System Library. It is the only supported way to call System Library functions, because those functions end with `RETI`. See `System_Library.md`.
 
 When `SYSCALL n8` is executed, the CPU performs the following sequence:
 
 1.  It pushes the address of the _next_ instruction (PC) onto the stack. This allows the system routine to return control to the user program.
 2.  It pushes the 16-bit Flags register (F) onto the stack.
-3.  It looks up the address of the system routine in a vector table located in low memory. The `n8` immediate value is an index into this table.
+3.  It looks up the address of the system routine in the System Call Vector Table at the start of System Library RAM (`E000-E0FF`). The `n8` immediate value is an index into this table; each entry is a 16-bit address, so the entry is read from `E000 + n8 * 2`.
 4.  It sets the PC to the address fetched from the vector table, effectively transferring control to the system routine.
 
 System routines are expected to finish with a `RETI` (Return from Interrupt) instruction, which restores the flags and the program counter, resuming the user program.

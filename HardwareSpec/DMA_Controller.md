@@ -33,6 +33,10 @@ To prevent conflicts over the system bus, the DMA controller uses a **CPU Haltin
   - **Special DMA Modes (Modes 1-6):** All special modes use high-speed transfer at **2 system clock cycles per byte**. The same 256-byte transfer would take only `256 * 2 = 512` clock cycles.
 - **Completion:** Once the specified number of bytes has been transferred, the DMA controller clears the `START` bit in `DMA_CTL` to `0`, releases the memory bus, and the CPU resumes execution on the next clock cycle.
 
+### **Protected Destinations**
+
+DMA writes obey the same MMU protection rules as CPU writes. A transfer whose destination range includes read-only memory (cartridge ROM, System Library RAM after boot, or Cartridge RAM while `WE_LATCH` is locked) raises a **Protected Memory Fault** at the first blocked byte, and the transfer is aborted. See `Interrupts.md`.
+
 ## **4. Control Register (`DMA_CTL`)**
 
 The `DMA_CTL` register at `F010` configures the behavior of the transfer.
@@ -80,7 +84,7 @@ This mode has two different behaviors depending on whether the console is in boo
 - **DMA_LEN**: Number of sprite entries to copy. Each sprite entry is 8 bytes, so the actual bytes transferred = `DMA_LEN × 8`.
 - **Speed**: 2 clock cycles per byte.
 - **Actual bytes transferred**: `DMA_LEN * 8`
-- **Destination Calculation**: `F400 + (DMA_DST & 0x00FF)`
+- **Destination Calculation**: `F400 + (DMA_DST & 0x00FF) × 8`
 - **Behavior**: Copies sprite data to a specific portion of OAM. This allows partial sprite updates without transferring all 512 bytes.
 - **Use case**: Update only active sprites, animate specific sprite groups, or perform incremental OAM updates. To copy all 64 sprites, set `DMA_DST = 0x0000` and `DMA_LEN = 64`.
 
@@ -93,7 +97,7 @@ Transfers data directly to a specific 2 KiB slot within VRAM's 32 KiB address sp
 - **DMA_LEN**: Number of VRAM slots to transfer.
 - **Speed**: 2 clock cycles per byte.
 - **Actual bytes transferred**: `DMA_LEN * 2048`
-- **Destination Calculation**: VRAM address = `(slot × 2048) + DMA_DST`
+- **Destination Calculation**: VRAM address = `(DMA_DST & 0x00FF) × 2048`
 - **Behavior**: The hardware automatically routes writes to the correct internal VRAM bank. The CPU's VRAM bank register is not affected.
 - **Use case**: Rapidly upload tilemap or tile graphics data to a specific VRAM region without managing bank switching. Ideal for level loading or dynamic tile updates.
 
@@ -138,12 +142,12 @@ Transfers data to or from the APU's DSP echo/delay buffer.
 
 Hardware-accelerated memory fill operation that writes a repeating 16-bit pattern to memory.
 
-- **DMA_SRC**: Contains the 16-bit pattern value to repeat (loaded as a word from `DMA_SRC` address).
+- **DMA_SRC**: Holds the 16-bit pattern value itself. In this mode the register is not treated as an address and no memory read is performed.
 - **DMA_DST**: Destination address in memory.
-- **DMA_LEN**: Number of 16-bit words to write.
+- **DMA_LEN**: Number of 16-bit words to write. The full 16-bit register is used (1-65535). A value of 0 is treated as 65536 words.
 - **Speed**: 2 clock cycles per byte (4 cycles per 16-bit word).
 - **Actual bytes written**: `DMA_LEN × 2`
-- **Behavior**: Reads a single 16-bit value from the source address once, then repeatedly writes this value to consecutive 16-bit locations starting at the destination. This is significantly faster than a CPU loop for large fills.
+- **Behavior**: Takes the 16-bit value in `DMA_SRC` and repeatedly writes it to consecutive 16-bit locations starting at the destination. This is significantly faster than a CPU loop for large fills.
 - **Use case**: Clear tilemaps with a specific tile, initialize background layers, fill VRAM regions with solid patterns, bulk initialization of data structures.
 
 ### **Mode 7: Reserved**

@@ -32,7 +32,7 @@ To expand the amount of available RAM beyond the limits of the 16-bit address sp
 - **VRAM (`9000-AFFF`):** This 8 KiB window can be mapped to one of four 8 KiB banks within the PPU's 32 KiB of VRAM. The active bank is selected by the **`VRAM_BANK`** register at `F014`.
 - **WRAM (`D000-DFFF`):** This 4 KiB window can be mapped to one of six 4 KiB banks of switchable Work RAM (WRAM1-6). The active bank is selected by the **`WRAM_BANK`** register at `F015`.
 - **Cartridge ROM (`4000-7FFF`):** This 16 KiB window can be mapped to any 16 KiB bank in the cartridge's ROM. The active bank is selected by the **`MPR_BANK`** register at `F011`.
-- **Cartridge RAM (`8000-8FFF`):** This 4 KiB window can be mapped to different banks of RAM on the cartridge, if present. The active bank is selected by the **`RAM_BANK`** register at `F012`.
+- **Cartridge RAM (`8000-8FFF`):** This 4 KiB window can be mapped to different banks of RAM on the cartridge, if present. The active bank is selected by the **`RAM_BANK`** register at `F012`. Writes are only permitted while the window is unlocked via the **`WE_LATCH`** register at `F013`; see `IO_Peripherals.md`.
 
 ### **Boot-time Mapping**
 
@@ -50,22 +50,22 @@ At power-on, the MMU starts in a special state to execute the internal Boot ROM.
 
 The MMU enforces access rules on certain memory regions.
 
-- **Read-Only Memory:** The Cartridge ROM (`0000-7FFF`) and the System Library RAM (`E000-EFFF`, after boot) are read-only. Any attempt by the CPU to write to these regions will be blocked by the MMU and will trigger a **Protected Memory Fault**.
-- **PPU Access Restrictions:** The PPU's internal RAM (VRAM, OAM, CRAM) is shared between the CPU and the PPU. While the CPU can access it at any time, writing to it while the PPU is actively drawing (`STAT` mode 3) can lead to visual glitches. Safe access is guaranteed during H-Blank (Mode 0) and V-Blank (Mode 1).
+- **Read-Only Memory:** The Cartridge ROM (`0000-7FFF`), the System Library RAM (`E000-EFFF`, after boot), the `SYS_CFG` register (`F026`, after boot), and Cartridge RAM (`8000-8FFF`) while `WE_LATCH` is locked or when the cartridge has no RAM are read-only. Any attempt by the CPU to write to these regions will be blocked by the MMU and will trigger a **Protected Memory Fault**.
+- **PPU Access Restrictions:** The PPU's internal RAM (VRAM, OAM, CRAM) is shared between the CPU and the PPU. The MMU never blocks CPU access: reads always return correct data and writes always succeed. However, a write to OAM during Mode 2 (OAM Scan), or a write to VRAM or CRAM during Mode 3 (Drawing Pixels), may be observed by the PPU mid-render and produce a visual glitch on the current scanline. Writes during H-Blank (Mode 0) and V-Blank (Mode 1) are always artifact-free. See `PPU_Architecture.md` section 1.1 for the full table.
 
 ### **Memory Access Alignment**
 
 The CPU requires 16-bit data to be aligned to an even memory address.
 
-- Any `LD.w` or `ST.w` instruction that attempts to read or write a 16-bit word from an odd address will be blocked by the MMU and will trigger a **Bus Error Fault**.
+- Any word-sized `LD` or `ST` instruction that attempts to read or write a 16-bit word from an odd address will be blocked by the MMU and will trigger a **Bus Error Fault**.
 - 8-bit operations (`LD.b`, `ST.b`) can access any address without issue.
 
-### **HRAM vs. WRAM Access Speed**
+### **HRAM vs. Other Memory Access Speed**
 
 Not all RAM is equal in speed.
 
 - **HRAM (High RAM, `FE00-FFFF`):** This small 512 B region is internal to the main processor chip. It can be accessed without any extra wait states, making it the fastest RAM in the system. It is ideal for storing frequently accessed variables, temporary "scratchpad" data, or time-critical interrupt handler code.
-- **WRAM (Work RAM, `B000-DFFF`):** This is a larger pool of general-purpose external RAM. Accessing it incurs a small number of wait states, making it slightly slower than HRAM. The cycle counts listed in the CPU ISA documentation assume WRAM access times. Accesses to HRAM using the same instructions will be faster.
+- **All other memory (including WRAM, `B000-DFFF`):** WRAM is a larger pool of general-purpose external RAM. Accessing it incurs a small number of wait states, making it slower than HRAM. Every region other than HRAM, including cartridge ROM, VRAM, CRAM, OAM, and the I/O registers, uses this slower timing. The CPU ISA documentation lists cycle counts as `HRAM/Other` for instructions that access memory.
 
 ## **I/O Peripherals**
 
