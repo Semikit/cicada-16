@@ -63,15 +63,15 @@
 ; PPU Registers
 .define LCDC      0xF040      ; LCD Control
 .define STAT      0xF041      ; PPU STAT
-.define BG_MODE   0xF04A      ; Background mode (tilemap size)
-.define BG_TMB    0xF04B      ; Background tilemap base
-.define WIN_TMB   0xF04C      ; Window tilemap base
-.define SCX0      0xF043      ; BG0 X scroll
-.define SCY0      0xF042      ; BG0 Y scroll
-.define SCX1      0xF045      ; BG1 X scroll
-.define SCY1      0xF044      ; BG1 Y scroll
-.define WINX      0xF047      ; Window X position
-.define WINY      0xF046      ; Window Y position
+.define SCY0      0xF042      ; BG0 Y scroll (16-bit, F042-F043)
+.define SCX0      0xF044      ; BG0 X scroll (16-bit, F044-F045)
+.define SCY1      0xF046      ; BG1 Y scroll (16-bit, F046-F047)
+.define SCX1      0xF048      ; BG1 X scroll (16-bit, F048-F049)
+.define WINY      0xF04A      ; Window Y position
+.define WINX      0xF04B      ; Window X position
+.define BG_MODE   0xF04E      ; Background mode (tilemap size)
+.define BG_TMB    0xF04F      ; Background tilemap base
+.define WIN_TMB   0xF050      ; Window tilemap base
 
 ; VRAM Bank register
 .define VRAM_BANK 0xF014
@@ -429,8 +429,8 @@ setup_ppu:
     PUSH R0
 
     ; Set background mode
-    ; BG_MODE bits 3-0 control BG0 size, bits 7-4 control BG1 size
-    ; 0000 = 32x32 tiles (256x256 pixels)
+    ; BG_MODE bits 1-0 control BG0 size, bits 3-2 control BG1 size
+    ; 00 = 32x32 tiles (256x256 pixels)
     LDI R0, 0x00
     ST.b (BG_MODE), R0
 
