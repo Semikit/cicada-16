@@ -60,9 +60,11 @@ The code on the Boot ROM executes the following steps in order:
    - Reads the 4-byte **Boot Animation Configuration** block from the cartridge header at addresses `0x4000-0x4003` (which correspond to cartridge ROM addresses `0x0000-0x0003`, accessible because ROM Bank 0 is temporarily mapped to `0x4000-0x7FFF` during boot).
    - Parses the animation configuration to determine:
      - **Entrance animation effect** (byte 0x4000): slide, fade, wave, bounce, etc. (or random selection)
-     - **Background color** (byte 0x4001): 16 predefined colors or animated rainbow
-     - **Logo/text color** (byte 0x4002): 16 predefined colors or animated rainbow
+     - **Palette ID** (byte 0x4001): 16 curated 16-color palettes (0x00-0x0F) or rainbow animation modes (0x10-0x11)
+     - **Reserved** (byte 0x4002): must be 0x00
      - **Audio selection** (byte 0x4003): default chime, silent, or random (reserved for future use)
+   - Copies the selected 16-color palette from Boot ROM to CRAM sub-palette 0 (32 bytes). Each palette contains a background color (index 0), gradient colors (indices 1-13), foreground/logo color (index 14), and accent color (index 15).
+   - For rainbow modes (0x10, 0x11), uses palette 0 (Classic, black BG) or palette 1 (Inverted, white BG) as a base and animates the foreground color (index 14) through rainbow colors at runtime.
    - Configures the PPU and APU according to these settings.
    - Enables interrupts (EI) and uses its internal V-Blank ISR to perform the selected startup animation effect.
    - Invalid animation IDs default to safe values (no animation, black background, white logo).

@@ -180,11 +180,8 @@ impl<'a> AstBuilder<'a> {
                 Rule::boot_anim_entry => {
                     info.boot_anim_entry = field_builder.expect_unsigned_byte()?;
                 }
-                Rule::boot_anim_bg => {
-                    info.boot_anim_bg = field_builder.expect_unsigned_byte()?;
-                }
-                Rule::boot_anim_fg => {
-                    info.boot_anim_fg = field_builder.expect_unsigned_byte()?;
+                Rule::boot_anim_palette => {
+                    info.boot_anim_palette = field_builder.expect_unsigned_byte()?;
                 }
                 Rule::boot_anim_audio => {
                     info.boot_anim_audio = field_builder.expect_unsigned_byte()?;

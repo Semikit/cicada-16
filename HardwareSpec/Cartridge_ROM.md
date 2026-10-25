@@ -54,8 +54,7 @@ During the boot sequence, the boot ROM temporarily maps the cartridge's ROM Bank
 
 The animation system supports:
 - **12 entrance animation effects** (slide, fade, wave, bounce, etc.) plus random selection
-- **16 background colors** plus an animated rainbow effect
-- **16 logo/text colors** plus an animated rainbow effect
+- **16 curated color palettes** plus two rainbow animation modes
 - **Audio customization** (reserved for future use)
 
 Invalid IDs default to safe values (no animation, black background, white logo).
@@ -65,8 +64,8 @@ Invalid IDs default to safe values (no animation, black background, white logo).
 | Offset | Name | Description |
 |--------|------|-------------|
 | 0x0000 | `ANIM_ENTRANCE` | Entrance animation effect ID |
-| 0x0001 | `ANIM_BG_COLOR` | Background color ID |
-| 0x0002 | `ANIM_LOGO_COLOR` | Logo/text color ID |
+| 0x0001 | `ANIM_PALETTE` | Color palette ID (combined bg/logo colors) |
+| 0x0002 | `(Reserved)` | Reserved, must be 0x00 |
 | 0x0003 | `ANIM_AUDIO` | Boot audio ID (reserved) |
 
 #### **Entrance Animations (Byte 0x0000)**
@@ -87,49 +86,48 @@ Invalid IDs default to safe values (no animation, black background, white logo).
 | 0x0B | `ENTRANCE_SPIN_IN` | Spin in effect |
 | 0xFF | `ENTRANCE_RANDOM` | Random entrance animation |
 
-#### **Background Colors (Byte 0x0001)**
+#### **Boot Palettes (Byte 0x0001)**
 
-| ID | Name | RGB555 | Description |
-|----|------|--------|-------------|
-| 0x00 | `BG_BLACK` | 0x0000 | Pure black |
-| 0x01 | `BG_WHITE` | 0x7FFF | Pure white |
-| 0x02 | `BG_DARK_GRAY` | 0x294A | Dark gray |
-| 0x03 | `BG_LIGHT_GRAY` | 0x56B5 | Light gray |
-| 0x04 | `BG_DARK_BLUE` | 0x0008 | Dark blue |
-| 0x05 | `BG_NAVY` | 0x0010 | Navy blue |
-| 0x06 | `BG_ROYAL_BLUE` | 0x2D7F | Royal blue |
-| 0x07 | `BG_SKY_BLUE` | 0x5EDF | Sky blue |
-| 0x08 | `BG_DARK_GREEN` | 0x0100 | Dark green |
-| 0x09 | `BG_FOREST` | 0x0280 | Forest green |
-| 0x0A | `BG_DARK_RED` | 0x4000 | Dark red |
-| 0x0B | `BG_MAROON` | 0x4800 | Maroon |
-| 0x0C | `BG_PURPLE` | 0x4010 | Purple |
-| 0x0D | `BG_DARK_PURPLE` | 0x2008 | Dark purple |
-| 0x0E | `BG_ORANGE` | 0x5E00 | Orange |
-| 0x0F | `BG_BROWN` | 0x2940 | Brown |
-| 0xFF | `BG_RAINBOW` | Animated | Cycles through rainbow |
+The selected 16-color palette is copied from Boot ROM to CRAM sub-palette 0 at boot time (32 bytes). Each palette contains 16 colors arranged for the boot animation.
 
-#### **Logo Colors (Byte 0x0002)**
+**Palette Color Layout:**
+| Color Index | Purpose |
+|-------------|---------|
+| 0 | Background color |
+| 1-13 | Gradient colors (BG to FG transition) |
+| 14 | Foreground (logo) color |
+| 15 | Accent color |
 
-| ID | Name | RGB555 | Description |
-|----|------|--------|-------------|
-| 0x00 | `LOGO_WHITE` | 0x7FFF | Pure white |
-| 0x01 | `LOGO_BLACK` | 0x0000 | Pure black |
-| 0x02 | `LOGO_GRAY` | 0x4210 | Medium gray |
-| 0x03 | `LOGO_RED` | 0x7C00 | Bright red |
-| 0x04 | `LOGO_GREEN` | 0x03E0 | Bright green |
-| 0x05 | `LOGO_BLUE` | 0x001F | Bright blue |
-| 0x06 | `LOGO_YELLOW` | 0x7FE0 | Yellow |
-| 0x07 | `LOGO_CYAN` | 0x03FF | Cyan |
-| 0x08 | `LOGO_MAGENTA` | 0x7C1F | Magenta |
-| 0x09 | `LOGO_ORANGE` | 0x7E00 | Orange |
-| 0x0A | `LOGO_PINK` | 0x7E1F | Pink |
-| 0x0B | `LOGO_LIME` | 0x47E0 | Lime green |
-| 0x0C | `LOGO_GOLD` | 0x6F40 | Gold |
-| 0x0D | `LOGO_SILVER` | 0x5294 | Silver |
-| 0x0E | `LOGO_TEAL` | 0x0210 | Teal |
-| 0x0F | `LOGO_CORAL` | 0x7D0A | Coral |
-| 0xFF | `LOGO_RAINBOW` | Animated | Cycles through rainbow |
+**Available Palettes:**
+
+| ID | Name | Background | Foreground | Notes |
+|----|------|------------|------------|-------|
+| 0x00 | Classic | Black | White | Default safe fallback |
+| 0x01 | Inverted | White | Black | High contrast |
+| 0x02 | Night Sky | Navy | White | |
+| 0x03 | Ocean | Dark Blue | Cyan | |
+| 0x04 | Forest | Dark Green | Lime | |
+| 0x05 | Sunset | Dark Red | Orange | |
+| 0x06 | Royal | Dark Purple | Gold | |
+| 0x07 | Arcade | Black | Green | Retro terminal |
+| 0x08 | Neon | Black | Magenta | |
+| 0x09 | Ice | Sky Blue | White | |
+| 0x0A | Fire | Maroon | Yellow | |
+| 0x0B | Earth | Brown | Gold | |
+| 0x0C | Grape | Purple | Pink | |
+| 0x0D | Mint | Dark Green | Cyan | |
+| 0x0E | Steel | Dark Gray | Silver | |
+| 0x0F | Coral Reef | Dark Blue | Coral | |
+| 0x10 | Rainbow Dark | Black | Animated | Rainbow FG on black BG |
+| 0x11 | Rainbow Light | White | Animated | Rainbow FG on white BG |
+
+**Rainbow Mode Details:**
+
+IDs 0x10 and 0x11 enable animated rainbow effects:
+- **Rainbow Dark (0x10)**: Uses palette 0 (Classic) as the base, with color 14 (FG) animated through rainbow colors at runtime
+- **Rainbow Light (0x11)**: Uses palette 1 (Inverted) as the base, with color 14 (FG) animated through rainbow colors at runtime
+
+The rainbow animation cycles through 8 colors (red, orange, yellow, green, cyan, blue, indigo, violet) by replacing the foreground color slot during V-Blank.
 
 #### **Audio (Byte 0x0003)**
 

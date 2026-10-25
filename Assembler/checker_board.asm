@@ -5,9 +5,8 @@
 ; --- Cartridge Header ---
 .header_start
     .boot_anim_entry 0x01
-    .boot_anim_bg 0x02
-    .boot_anim_fg 0x03
-    .boot_anim_audio 0x04
+    .boot_anim_palette 0x00
+    .boot_anim_audio 0x00
     .title "Static-Image"
     .developer "Your-Name"
     .version 1

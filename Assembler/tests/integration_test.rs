@@ -184,8 +184,7 @@ fn test_header() {
         r#"
         .header_start
             .boot_anim_entry 0x01
-            .boot_anim_bg 0x02
-            .boot_anim_fg 0x03
+            .boot_anim_palette 0x02
             .boot_anim_audio 0x04
             .title "Test-Game"
             .developer "Test-Dev"
@@ -208,8 +207,8 @@ fn test_header() {
 
     // Boot Animation bytes
     assert_eq!(result[0], 0x01); // boot_anim_entry
-    assert_eq!(result[1], 0x02); // boot_anim_bg
-    assert_eq!(result[2], 0x03); // boot_anim_fg
+    assert_eq!(result[1], 0x02); // boot_anim_palette
+    assert_eq!(result[2], 0x00); // reserved (must be 0x00)
     assert_eq!(result[3], 0x04); // boot_anim_audio
 
     // Title

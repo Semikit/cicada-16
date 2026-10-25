@@ -373,7 +373,14 @@ These directives define a block that contains the cartridge header information.
 
 The following directives are valid inside a `.header_start` / `.header_end` block:
 
-- **.boot_anim**: A 4-character string for the boot animation ID.
+**Boot Animation Settings:**
+
+- **.boot_anim_entry**: Entrance animation effect ID (0x00-0x0B, or 0xFF for random). See `HardwareSpec/Cartridge_ROM.md` for the full list of entrance animations.
+- **.boot_anim_palette**: Color palette ID (0x00-0x0F for curated 16-color palettes, 0x10 for rainbow with black BG, 0x11 for rainbow with white BG). Each palette contains 16 colors including background, gradient, foreground, and accent colors. See `HardwareSpec/Cartridge_ROM.md` for the full palette table.
+- **.boot_anim_audio**: Audio ID (0x00 for default chime, 0x01 for silent, 0xFF for random).
+
+**Cartridge Metadata:**
+
 - **.title**: The game's title (up to 16 characters).
 - **.developer**: The developer's name (up to 16 characters).
 - **.version**: The game's version number (e.g., `1`).
@@ -388,7 +395,9 @@ The following directives are valid inside a `.header_start` / `.header_end` bloc
 
 ```asm
 .header_start
-    .boot_anim "CICA"
+    .boot_anim_entry 0x01   ; Slide down entrance
+    .boot_anim_palette 0x00 ; Classic palette (black bg, white logo)
+    .boot_anim_audio 0x00   ; Default boot chime
     .title "My-Awesome-Game"
     .developer "Awesome-Dev"
     .version 1
@@ -401,7 +410,25 @@ The following directives are valid inside a `.header_start` / `.header_end` bloc
 .header_end
 ```
 
-- **Note**: String literals like those used for .boot_anim, .title and .developer cannot contain whitespace, this is a limitation that will be fixed in a later update.
+**Boot Palette Quick Reference:**
+
+| ID | Name | Background | Foreground |
+|----|------|------------|------------|
+| 0x00 | Classic | Black | White |
+| 0x01 | Inverted | White | Black |
+| 0x02 | Night Sky | Navy | White |
+| 0x07 | Arcade | Black | Green |
+| 0x08 | Neon | Black | Magenta |
+| 0x0A | Fire | Maroon | Yellow |
+| 0x0F | Coral Reef | Dark Blue | Coral |
+| 0x10 | Rainbow Dark | Black | Animated |
+| 0x11 | Rainbow Light | White | Animated |
+
+Each palette contains 16 colors: background (index 0), gradient (indices 1-13), foreground (index 14), and accent (index 15). Rainbow modes animate the foreground color through 8 rainbow colors.
+
+See `HardwareSpec/Cartridge_ROM.md` for the complete list of 16 palettes plus rainbow modes.
+
+- **Note**: String literals like those used for .title and .developer cannot contain whitespace, this is a limitation that will be fixed in a later update.
 
 ### .interrupt_table / .table_end
 
