@@ -9,6 +9,7 @@
 ;   Color 15:    Accent color
 ; ==============================================================================
 .section name="color_data"
+.align 2
 
 ; ------------------------------------------------------------------------------
 ; Boot palette lookup table - 16 palettes, 16 colors each (RGB555 format)
@@ -371,6 +372,7 @@ pal_coral:
 ; Rainbow color table (8 colors, cycled for animated rainbow effect)
 ; Used to replace color 14 (FG) when rainbow mode is selected
 ; ------------------------------------------------------------------------------
+.align 2
 rainbow_colors:
     .word 0x7C00            ; Red
     .word 0x7E00            ; Orange

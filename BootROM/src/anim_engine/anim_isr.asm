@@ -5,58 +5,61 @@
 ; Minimal ISR - just sets flag for main loop to handle hardware updates
 ; ==============================================================================
 vblank_isr:
-    ; Save registers
     PUSH R0
 
-    ; Set V-Blank flag for main loop
     LDI R0, 1
     ST.b (ANIM_VBLANK_FLAG), R0
 
-    ; Clear V-Blank interrupt flag
-    SET (IF), 0
+    ; Clear V-Blank interrupt flag (write 1 to clear)
+    LDI R0, INT_VBLANK
+    ST.b (IF), R0
 
-    ; Restore registers
     POP R0
     RETI
 
 ; ==============================================================================
 ; lyc_isr
-; LYC (scanline) interrupt service routine for wave effects
-; Updates BG1 scroll (logo layer) for per-scanline wave distortion
+; LYC (scanline) interrupt service routine for per-scanline scroll effects.
+; Fires on every visible scanline while a scanline effect is active (STAT
+; LYC_INT_EN is set by update_lyc_enable). Writes entry LY of
+; ANIM_SCANLINE_TABLE to the scroll register in ANIM_SCANLINE_REG, then arms
+; LYC for the next line. On entering V-Blank it re-arms LYC for line 0.
+; The scroll write is done as early as possible so it lands before the PPU
+; starts drawing the line.
 ; ==============================================================================
 lyc_isr:
-    ; Save registers
     PUSH R0
     PUSH R1
 
-    ; Get current scanline index
-    LD.b R0, (ANIM_SCANLINE_IDX)
+    LD.b R0, (LY)
+    CMPI R0, 160
+    JRNC li_vblank                  ; LY >= 160: no table entry, re-arm for line 0
 
-    ; Look up SCY offset from table
-    LDI R1, ANIM_SCANLINE_TABLE
-    ADD R1, R0
-    LD.b R1, (R1)                   ; Get offset value
+    ; R1 = table[LY]
+    LD R1, R0
+    SHL R1
+    ADDI R1, ANIM_SCANLINE_TABLE
+    LD R1, (R1)
 
-    ; Apply to base scroll and write to BG1 (logo layer)
-    LD R0, (ANIM_SCROLL_Y_L)
-    ADD R0, R1
-    ST (SCY1_L), R0
+    ; write it to the selected BG1 scroll register
+    LD R0, (ANIM_SCANLINE_REG)
+    ST (R0), R1
 
-    ; Advance to next scanline
-    LD.b R0, (ANIM_SCANLINE_IDX)
+    ; next line
+    LD.b R0, (LY)
     INC R0
-    ST.b (ANIM_SCANLINE_IDX), R0
+    ST.b (LYC), R0
+    JR li_done
 
-    ; Set next LYC (skip some scanlines for performance)
-    LD R0, (LY)
-    ADDI R0, 3                      ; Process every 4th scanline
+li_vblank:
+    LDI R0, 0
     ST.b (LYC), R0
 
-    ; Clear LYC interrupt flag
+li_done:
+    ; Clear LYC interrupt flag (write 1 to clear)
     LDI R0, INT_LYC
     ST.b (IF), R0
 
-    ; Restore registers
     POP R1
     POP R0
     RETI

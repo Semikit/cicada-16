@@ -130,7 +130,7 @@
 ; ==============================================================================
 ; System Config (0xF026)
 ; ==============================================================================
-.define SYS_CFG             0xF026      ; System Config flags (bit 7 sets standard/enhanced interrupt mode)
+.define SYS_CFG             0xF026      ; System Config flags (bit 0 IVT_MODE: 0 = standard, 1 = enhanced interrupt mode)
 
 ; ------------------------------------------------------------------------------
 ; Timer Control (TAC0/TAC1) Bit Flags
@@ -220,7 +220,7 @@
 ; ------------------------------------------------------------------------------
 ; Channel 2 - Wave Channel (custom waveform)
 ; ------------------------------------------------------------------------------
-.define APU_CH2_CTRL        0xF08D      ; Channel 2 control (bits 5-0 = wave index)
+.define APU_CH2_CTRL        0xF08D      ; Channel 2 control (bits 4-0 = wave index)
 .define APU_CH2_ADSR_L      0xF08E      ; Channel 2 ADSR envelope low byte
 .define APU_CH2_ADSR_H      0xF08F      ; Channel 2 ADSR envelope high byte
 .define APU_CH2_FREQ_L      0xF090      ; Channel 2 frequency low byte
@@ -232,28 +232,30 @@
 .define APU_CH3_CTRL        0xF093      ; Channel 3 control register
 .define APU_CH3_ADSR_L      0xF094      ; Channel 3 ADSR envelope low byte
 .define APU_CH3_ADSR_H      0xF095      ; Channel 3 ADSR envelope high byte
+.define APU_CH3_FREQ_L      0xF096      ; Channel 3 LFSR clock frequency low byte
+.define APU_CH3_FREQ_H      0xF097      ; Channel 3 LFSR clock frequency high byte
 
 ; ------------------------------------------------------------------------------
 ; Mixer Controls
 ; ------------------------------------------------------------------------------
-.define APU_MIX_CTRL        0xF096      ; Mixer control (APU enable, channel enables)
-.define APU_MIX_VOL         0xF097      ; Master volume (L: bits 7-4, R: bits 3-0)
+.define APU_MIX_CTRL        0xF099      ; Mixer control (APU enable, channel enables)
+.define APU_MIX_VOL         0xF09A      ; Master volume (L: bits 7-4, R: bits 3-0)
 
 ; ------------------------------------------------------------------------------
 ; Channel Output/Panning Controls
 ; ------------------------------------------------------------------------------
-.define APU_CH0_OUT         0xF099      ; Channel 0 stereo volume (L: 7-4, R: 3-0)
-.define APU_CH1_OUT         0xF09A      ; Channel 1 stereo volume (L: 7-4, R: 3-0)
-.define APU_CH2_OUT         0xF09B      ; Channel 2 stereo volume (L: 7-4, R: 3-0)
-.define APU_CH3_OUT         0xF09C      ; Channel 3 stereo volume (L: 7-4, R: 3-0)
+.define APU_CH0_OUT         0xF09B      ; Channel 0 stereo volume (L: 7-4, R: 3-0)
+.define APU_CH1_OUT         0xF09C      ; Channel 1 stereo volume (L: 7-4, R: 3-0)
+.define APU_CH2_OUT         0xF09D      ; Channel 2 stereo volume (L: 7-4, R: 3-0)
+.define APU_CH3_OUT         0xF09E      ; Channel 3 stereo volume (L: 7-4, R: 3-0)
 
 ; ------------------------------------------------------------------------------
 ; DSP Effects
 ; ------------------------------------------------------------------------------
-.define APU_DSP_CTRL        0xF09D      ; DSP control register
-.define APU_DSP_DELAY       0xF09E      ; DSP delay time
-.define APU_DSP_FBACK       0xF09F      ; DSP feedback level (0-15)
-.define APU_DSP_WET         0xF0A0      ; DSP wet signal mix level (0-15)
+.define APU_DSP_CTRL        0xF09F      ; DSP control register
+.define APU_DSP_DELAY       0xF0A0      ; DSP delay time
+.define APU_DSP_FBACK       0xF0A1      ; DSP feedback level (0-15)
+.define APU_DSP_WET         0xF0A2      ; DSP wet signal mix level (0-15)
 
 ; ------------------------------------------------------------------------------
 ; Wave RAM
@@ -277,7 +279,7 @@
 ; ------------------------------------------------------------------------------
 .define APU_WAVE_KEY_ON     0x80        ; Bit 7: Key on
 .define APU_WAVE_RETRIGGER  0x40        ; Bit 6: Retrigger ADSR
-.define APU_WAVE_IDX_MASK   0x3F        ; Bits 5-0: Wave index (0-31)
+.define APU_WAVE_IDX_MASK   0x1F        ; Bits 4-0: Wave index (0-31)
 
 ; ------------------------------------------------------------------------------
 ; APU Noise Channel Control Bit Flags (CH3_CTRL)
@@ -286,7 +288,7 @@
 .define APU_NOISE_MODE_7BIT 0x40        ; Bit 6: 7-bit LFSR (metallic noise)
 .define APU_NOISE_MODE_15BIT 0x00       ; Bit 6: 15-bit LFSR (white noise)
 .define APU_NOISE_RETRIGGER 0x20        ; Bit 5: Retrigger ADSR
-.define APU_NOISE_CLK_MASK  0x1F        ; Bits 4-0: Clock divider (0-31)
+                                        ; Bits 4-0: unused (LFSR clock rate is set via APU_CH3_FREQ_L/H)
 
 ; ------------------------------------------------------------------------------
 ; APU Sweep Control Bit Flags (CH0_SWEEP)

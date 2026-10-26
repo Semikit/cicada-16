@@ -76,7 +76,7 @@ The `initDefaultFont` function handles the conversion, reading the compact 8-byt
 
 ### **Sine Wave Table** : Index 0x01
 
-A 256-byte table containing a single cycle of a sine wave. This can be used by the APU's wave channel to produce a pure tone, or as a building block for more complex sounds.
+A 256-byte table containing a single cycle of a sine wave: entry `i` is `round(127 * sin(2 * pi * i / 256))` stored as a signed 8-bit two's complement value (-127 to 127). Entry 0 is 0, entry 64 is 127, entry 128 is 0 and entry 192 is -127. The index can be used as an angle in 1/256ths of a turn, so `cos(a)` is entry `(a + 64) & 0xFF`. The boot ROM uses it for its wave and spin animations; converting it to the wave channel's unsigned 4-bit format requires adding 128 and taking the top nibble.
 
 ### **Note Frequency Table** : Index 0x02
 

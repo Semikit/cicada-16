@@ -136,25 +136,11 @@ clear_vram:
 ; ===========================
 ; Clear WRAM0
 ;
-; Clears the currently selected WRAM bank using DMA mode 6.
-; Assumes that 0xFE00-0xFE01 has been set to 0x0000
-;
-; clobbers:
-; R0, R1, R2
+; There is intentionally no clear_wram0 helper. WRAM0 (0xB000-0xCFFF)
+; holds the boot stack at its top, so clearing it from inside a CALLed
+; routine zeroes the return addresses on the stack. The clear is done
+; inline at 'start' in main.asm before the first CALL.
 ; ===========================
-
-clear_wram0:
-	; set dma mode 6 values
-	; DMA_SRC: 0xFE00
-	; DMA_DEST: 0xB000 (WRAM0_START)
-	; DMA_LEN: 0x1000 (8KiB, 4096 16-bit words)
-	LDI R0, 0x0000
-	LDI R1, WRAM0_START
-	LDI R2, 0x1000
-
-	CALL dma_mode_6
-
-	RET
 
 ; ===========================
 ; Clear HRAM
@@ -170,10 +156,10 @@ clear_hram:
 	; set dma mode 6 values
 	; DMA_SRC: 0x0000
 	; DMA_DEST: 0xFE00
-	; DMA_LEN: 0x1000 (4096 16-bit words)
+	; DMA_LEN: 0x0100 (512 bytes, 256 16-bit words)
 	LDI R0, 0x0000
 	LDI R1, HRAM_START
-	LDI R2, 0x1000
+	LDI R2, 0x0100
 
 	CALL dma_mode_6
 

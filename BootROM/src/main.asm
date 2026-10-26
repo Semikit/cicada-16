@@ -6,6 +6,21 @@
 start:
 	DI ; disable interrupts for the boot process
 
+	; clear WRAM0 (0xB000-0xCFFF) with a DMA mode 6 fill.
+	; This must run inline, before any CALL: the boot stack lives at the
+	; top of WRAM0 (R7 resets to 0xD000 and grows down), so a CALL/RET
+	; based clear would zero its own return addresses. The DMA controller
+	; halts the CPU until the fill completes, so nothing else touches the
+	; stack while it runs.
+	LDI R0, 0x0000          ; fill pattern
+	ST (DMA_SRC_L), R0
+	LDI R0, WRAM0_START     ; destination 0xB000
+	ST (DMA_DST_L), R0
+	LDI R0, 0x1000          ; 4096 16-bit words = 8 KiB
+	ST (DMA_LEN_L), R0
+	LDI R0, 0x31            ; DMA_CTL: mode 6 (bits 5-3), start (bit 0)
+	ST.b (DMA_CTL), R0
+
 	; initialize hardware registers
 	CALL init_hardware
 
@@ -17,7 +32,7 @@ start:
 	; header and set the system config register
 	CALL set_isr_mode
 
-	; TODO: run boot animation and sound
+	; run the boot logo animation (sound: TODO)
 	CALL run_boot_animation
 
 	; clear cpu registers again
@@ -36,13 +51,27 @@ handoff:
 .include "./anim_engine/anim_engine.asm"
 
 init_hardware:
-	; Disable PPU
-	; LCDC enable/disable: 0xF040 bit 7
-	RES (LCDC), 7
+	; PPU: disable and reset the registers the boot ROM uses to their
+	; documented power-on defaults (0)
+	LDI R0, 0
+	ST.b (LCDC), R0
+	ST.b (STAT), R0
+	ST (SCY0_L), R0
+	ST (SCX0_L), R0
+	ST (SCY1_L), R0
+	ST (SCX1_L), R0
+	ST.b (LYC), R0
+	ST.b (BG_MODE), R0
+	ST.b (BG_TMB), R0
 
-	; Disable APU
-	; APU enable/disable: 0xF096 bit 7
-	RES (APU_MIX_CTRL), 7
+	; APU: master and channel enables off, all channels keyed off, DSP off
+	ST.b (APU_MIX_CTRL), R0
+	ST.b (APU_MIX_VOL), R0
+	ST.b (APU_CH0_CTRL), R0
+	ST.b (APU_CH1_CTRL), R0
+	ST.b (APU_CH2_CTRL), R0
+	ST.b (APU_CH3_CTRL), R0
+	ST.b (APU_DSP_CTRL), R0
 
 	; stop timers
 	; TAC0 (timer 0 control) enable/disable: 0xF009 bit 5
@@ -69,8 +98,9 @@ init_hardware:
 	; clear VRAM
 	CALL clear_vram
 
-	; clear WRAM0
-	CALL clear_wram0
+	; note: WRAM0 is cleared inline at 'start' before any CALL, because
+	; the boot stack lives at the top of WRAM0 and a CALL-based clear
+	; would wipe its own return addresses.
 
 	; clear HRAM
 	CALL clear_hram
@@ -90,6 +120,7 @@ clear_regs:
 	LD R2, R0
 	LD R3, R0
 	LD R4, R0
+	LD R5, R0
 	LD R6, R0
 
 	RET
@@ -101,9 +132,32 @@ set_isr_mode:
 	; to 0x4028) of the cartridge.
 	LD.b R0, (0x4028)
 
-	; mask off bit 7 of the value from the cartridge header
+	; isolate bit 7 (interrupt mode flag) of the header byte
 	ANDI 0x0080
 
+	; SYS_CFG bit 0 (IVT_MODE) selects the interrupt mode:
+	; 0 = standard (vectors at 0x0060), 1 = enhanced (vectors at 0xBFE0)
+	; standard mode: R0 is already 0, write it as-is
+	JRZ sim_write
+
+	; enhanced mode: set IVT_MODE
+	LDI R0, 0x01
+	ST.b (SYS_CFG), R0
+
+	; copy the 26-byte interrupt vector table template from the cartridge
+	; header (0x0060, mapped at 0x4060 during boot) to WRAM at 0xBFE0 with a
+	; normal (mode 0) DMA, so the game starts with its ROM vectors in place
+	LDI R0, 0x4060
+	ST (DMA_SRC_L), R0
+	LDI R0, 0xBFE0
+	ST (DMA_DST_L), R0
+	LDI R0, 26
+	ST (DMA_LEN_L), R0
+	LDI R0, 0x01            ; DMA_CTL: mode 0, incrementing, start
+	ST.b (DMA_CTL), R0
+	RET
+
+sim_write:
 	; store the value to the system config register
 	ST.b (SYS_CFG), R0
 
